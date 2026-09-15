@@ -16,6 +16,8 @@ import {
   AlertTriangle,
   Bell,
   Send,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import {
   downloadBackup,
@@ -55,6 +57,7 @@ export default function PengaturanPage() {
   const [operators, setOperators] = useState<Operator[]>([]);
   const [showOperatorForm, setShowOperatorForm] = useState(false);
   const [editingOperator, setEditingOperator] = useState<Operator | null>(null);
+  const [visiblePinId, setVisiblePinId] = useState<string | null>(null);
   const [confirmDeleteOperatorId, setConfirmDeleteOperatorId] = useState<string | null>(null);
 
   async function refreshBackupStatus() {
@@ -520,7 +523,16 @@ export default function PengaturanPage() {
                 className="flex items-center gap-3 bg-cream rounded-card p-2.5 border border-cream-dark"
               >
                 <span className="flex-1 min-w-0 text-sm font-medium text-espresso truncate">{op.name}</span>
-                <span className="text-xs text-espresso/40 tracking-widest shrink-0">PIN {op.pin}</span>
+                <span className="text-xs text-espresso/40 tracking-widest shrink-0">
+                  PIN {visiblePinId === op.id ? op.pin : '•'.repeat(op.pin.length)}
+                </span>
+                <button
+                  onClick={() => setVisiblePinId((cur) => (cur === op.id ? null : op.id))}
+                  className="w-7 h-7 flex items-center justify-center rounded-full bg-cream-dark text-espresso/60"
+                  aria-label={visiblePinId === op.id ? 'Sembunyikan PIN' : 'Lihat PIN'}
+                >
+                  {visiblePinId === op.id ? <EyeOff size={13} /> : <Eye size={13} />}
+                </button>
                 <button
                   onClick={() => {
                     setEditingOperator(op);
