@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { UserRound, ChevronUp, X } from 'lucide-react';
+import { ChevronUp, X } from 'lucide-react';
 import type { CartItem, MenuItem, PaymentMethod } from '@/lib/types';
 import { formatRupiah } from '@/lib/utils/format';
 import { getAllMenu, decrementStock, seedMenuIfEmpty, toggleFavorite } from '@/lib/storage/menuService';
@@ -18,11 +18,13 @@ interface ReceiptData {
   method: PaymentMethod;
   cashReceived?: number;
   change?: number;
+  customerName?: string;
 }
 
 export default function KasirPage() {
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [customerName, setCustomerName] = useState('');
   const [showPayment, setShowPayment] = useState(false);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [activeOperatorName, setActiveOperatorName] = useState<string | null>(null);
@@ -40,6 +42,13 @@ export default function KasirPage() {
   }, []);
 
   const total = cart.reduce((sum, c) => sum + c.menuItem.price * c.quantity, 0);
+
+  // Reset nama pelanggan begitu keranjang kosong (baik karena checkout
+  // selesai maupun semua item dihapus manual) supaya tidak kebawa ke
+  // pesanan pelanggan berikutnya.
+  useEffect(() => {
+    if (cart.length === 0) setCustomerName('');
+  }, [cart.length]);
 
   function handleAdd(item: MenuItem) {
     setCart((prev) => {
@@ -86,6 +95,7 @@ export default function KasirPage() {
   }
 
   async function handleConfirmPayment(method: PaymentMethod, cashReceived?: number) {
+    const trimmedCustomerName = customerName.trim() || undefined;
     await createTransaction({
       items: cart.map((c) => ({
         menuItemId: c.menuItem.id,
@@ -103,6 +113,7 @@ export default function KasirPage() {
       change: cashReceived !== undefined ? cashReceived - total : undefined,
       source: 'pos',
       operatorName: activeOperatorName ?? undefined,
+      customerName: trimmedCustomerName,
     });
 
     for (const c of cart) {
@@ -115,6 +126,7 @@ export default function KasirPage() {
       method,
       cashReceived,
       change: cashReceived !== undefined ? cashReceived - total : undefined,
+      customerName: trimmedCustomerName,
     });
     setShowPayment(false);
     setCartSheetOpen(false);
@@ -129,20 +141,7 @@ export default function KasirPage() {
           cart.length > 0 ? 'pb-40' : 'pb-24'
         }`}
       >
-        <div className="flex items-center justify-between mb-4 gap-2">
-          <h1 className="font-display font-semibold text-xl text-espresso">Kasir</h1>
-          {activeOperatorName && (
-            <span
-              className="flex items-center gap-1.5 bg-surface border border-cream-dark rounded-full pl-1 pr-3 py-1 text-xs text-espresso/70"
-              title="Kasir jaga"
-            >
-              <span className="w-6 h-6 rounded-full bg-espresso text-cream flex items-center justify-center">
-                <UserRound size={12} />
-              </span>
-              <span className="font-medium text-espresso">{activeOperatorName}</span>
-            </span>
-          )}
-        </div>
+        <h1 className="font-display font-semibold text-xl text-espresso mb-4">Kasir</h1>
 
         <MenuGrid menu={menu} onAdd={handleAdd} onToggleFavorite={handleToggleFavorite} />
       </div>
@@ -152,6 +151,8 @@ export default function KasirPage() {
       <div className="hidden lg:flex lg:w-80 lg:shrink-0 border-l border-cream-dark bg-cream lg:h-full">
         <Cart
           cart={cart}
+          customerName={customerName}
+          onCustomerNameChange={setCustomerName}
           onIncrement={handleIncrement}
           onDecrement={handleDecrement}
           onRemove={handleRemove}
@@ -200,6 +201,8 @@ export default function KasirPage() {
             <div className="flex-1 min-h-0">
               <Cart
                 cart={cart}
+                customerName={customerName}
+                onCustomerNameChange={setCustomerName}
                 onIncrement={handleIncrement}
                 onDecrement={handleDecrement}
                 onRemove={handleRemove}

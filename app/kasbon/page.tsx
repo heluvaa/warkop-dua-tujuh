@@ -185,7 +185,16 @@ export default function KasbonPage() {
       {confirmDeleteId && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-cream rounded-card p-5 max-w-xs w-full space-y-4 text-center">
-            <p className="text-espresso">Hapus kasbon ini? Tindakan tidak bisa dibatalkan.</p>
+            <p className="text-espresso">
+              Hapus kasbon ini? Tindakan tidak bisa dibatalkan.
+              {entries.find((e) => e.id === confirmDeleteId)?.status === 'lunas' && (
+                <>
+                  {' '}
+                  Transaksi pemasukan yang tercatat di Laporan untuk kasbon ini juga akan dibatalkan
+                  (void).
+                </>
+              )}
+            </p>
             <div className="flex gap-2">
               <button
                 onClick={() => setConfirmDeleteId(null)}

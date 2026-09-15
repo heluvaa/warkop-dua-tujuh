@@ -12,6 +12,7 @@ export default function ReceiptModal({
   method,
   cashReceived,
   change,
+  customerName,
   onClose,
 }: {
   items: CartItem[];
@@ -19,6 +20,7 @@ export default function ReceiptModal({
   method: PaymentMethod;
   cashReceived?: number;
   change?: number;
+  customerName?: string;
   onClose: () => void;
 }) {
   return (
@@ -28,6 +30,11 @@ export default function ReceiptModal({
           <Check size={24} />
         </div>
         <h2 className="font-display font-semibold text-lg text-espresso">Pesanan Selesai</h2>
+        {customerName && (
+          <p className="text-sm text-espresso/60">
+            Atas nama <span className="font-medium text-espresso">{customerName}</span>
+          </p>
+        )}
 
         <div className="bg-surface rounded-card p-4 text-left space-y-1.5">
           {items.map(({ menuItem, quantity, note }) => (

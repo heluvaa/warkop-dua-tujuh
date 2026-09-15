@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Download, Trash2, Send, TrendingUp, TrendingDown, Wallet, Loader2, CalendarDays, Flame, Ban, Search, X, LineChart, Users, Clock, CalendarRange, PiggyBank } from 'lucide-react';
-import type { Transaction, PengeluaranEntry } from '@/lib/types';
+import { Download, Trash2, Send, TrendingUp, TrendingDown, Wallet, Loader2, CalendarDays, Flame, Ban, Search, X, LineChart, Users, Clock, CalendarRange, PiggyBank, Receipt, AlertTriangle } from 'lucide-react';
+import type { Transaction, PengeluaranEntry, KasbonEntry } from '@/lib/types';
 import { getTransactionsByDate, clearTransactionsByDate, voidTransaction, getDailyTotals, getTransactionsByMonth } from '@/lib/storage/transactionService';
 import { getPengeluaranByDate, clearPengeluaranByDate, getPengeluaranByMonth } from '@/lib/storage/pengeluaranService';
 import { getAllKasbon } from '@/lib/storage/kasbonService';
@@ -10,7 +10,7 @@ import { KASBON_OVERDUE_DAYS } from '@/lib/constants';
 import { incrementStock } from '@/lib/storage/menuService';
 import { formatRupiah, formatDateTime } from '@/lib/utils/format';
 import { downloadCsv } from '@/lib/utils/exportCsv';
-import { todayDateKey, daysSince, currentMonthKey } from '@/lib/utils/date';
+import { todayDateKey, daysSince, currentMonthKey, toMonthKey } from '@/lib/utils/date';
 import SalesTrendChart, { type TrendBucket } from '@/components/laporan/SalesTrendChart';
 import MonthPicker from '@/components/laporan/MonthPicker';
 
@@ -37,7 +37,7 @@ export default function LaporanPage() {
   const [operatorFilter, setOperatorFilter] = useState('semua');
   const [trendRange, setTrendRange] = useState<TrendRange>('week');
   const [trendBuckets, setTrendBuckets] = useState<TrendBucket[]>([]);
-  const [kasbonJatuhTempoCount, setKasbonJatuhTempoCount] = useState(0);
+  const [kasbonAll, setKasbonAll] = useState<KasbonEntry[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey());
   const [monthTransactions, setMonthTransactions] = useState<Transaction[]>([]);
   const [monthPengeluaran, setMonthPengeluaran] = useState<PengeluaranEntry[]>([]);
@@ -59,10 +59,7 @@ export default function LaporanPage() {
 
   useEffect(() => {
     (async () => {
-      const allKasbon = await getAllKasbon();
-      setKasbonJatuhTempoCount(
-        allKasbon.filter((k) => k.status === 'belum_lunas' && daysSince(k.createdAt) >= KASBON_OVERDUE_DAYS).length
-      );
+      setKasbonAll(await getAllKasbon());
     })();
   }, []);
 
@@ -110,16 +107,18 @@ export default function LaporanPage() {
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
-  // Cari transaksi berdasarkan nama menu di dalamnya, atau berdasarkan
-  // nominal total (cocok sebagian, misal "15000" atau "15.000").
+  // Cari transaksi berdasarkan nama menu di dalamnya, nama pelanggan (kalau
+  // dicatat), atau berdasarkan nominal total (cocok sebagian, misal "15000"
+  // atau "15.000").
   const txQ = txQuery.trim().toLowerCase();
   const txQDigits = txQuery.replace(/\D/g, '');
   const filteredSorted = sorted.filter((t) => {
     if (operatorFilter !== 'semua' && (t.operatorName ?? 'Tanpa Kasir') !== operatorFilter) return false;
     if (!txQ) return true;
     const nameMatch = t.items.some((i) => i.name.toLowerCase().includes(txQ));
+    const customerMatch = t.customerName?.toLowerCase().includes(txQ) ?? false;
     const amountMatch = txQDigits.length > 0 && t.total.toString().includes(txQDigits);
-    return nameMatch || amountMatch;
+    return nameMatch || customerMatch || amountMatch;
   });
 
   // Daftar kasir yang muncul pada tanggal terpilih, untuk dropdown filter.
@@ -268,8 +267,44 @@ export default function LaporanPage() {
   }
   const monthLabaKotor = monthOmzetDenganHpp - monthModalTerjual;
 
+  // --- Laporan Kasbon --------------------------------------------------
+  //
+  // Ringkasan "saat ini" (tidak terikat tanggal/bulan yang dipilih) —
+  // menunjukkan kondisi utang pelanggan sekarang, sama seperti badge/counter
+  // yang sudah ada sebelumnya.
+  const belumLunasKasbon = kasbonAll.filter((k) => k.status === 'belum_lunas');
+  const totalKasbonBelumLunas = belumLunasKasbon.reduce((sum, k) => sum + k.total, 0);
+  const kasbonJatuhTempo = belumLunasKasbon.filter((k) => daysSince(k.createdAt) >= KASBON_OVERDUE_DAYS);
+  const kasbonJatuhTempoCount = kasbonJatuhTempo.length;
+
+  // Pelanggan berutang terbesar — diagregasi per nama (satu pelanggan bisa
+  // punya beberapa catatan kasbon belum lunas sekaligus).
+  const topDebitur = (() => {
+    const map = new Map<string, { name: string; total: number; count: number; maxDays: number }>();
+    for (const k of belumLunasKasbon) {
+      const existing = map.get(k.customerName) ?? { name: k.customerName, total: 0, count: 0, maxDays: 0 };
+      existing.total += k.total;
+      existing.count += 1;
+      existing.maxDays = Math.max(existing.maxDays, daysSince(k.createdAt));
+      map.set(k.customerName, existing);
+    }
+    return [...map.values()].sort((a, b) => b.total - a.total).slice(0, 5);
+  })();
+  const maxDebiturTotal = topDebitur[0]?.total ?? 0;
+
+  // Breakdown bulanan untuk Rekap Bulanan: kasbon BARU dicatat bulan ini
+  // (bukan pemasukan — baru jadi pemasukan saat lunas) vs kasbon yang LUNAS
+  // di bulan ini (nominalnya sudah termasuk di monthPemasukan lewat
+  // transaksi 'kasbon_lunas', ini cuma breakdown informatif).
+  const monthKasbonBaru = kasbonAll.filter((k) => toMonthKey(new Date(k.createdAt)) === selectedMonth);
+  const monthKasbonBaruTotal = monthKasbonBaru.reduce((sum, k) => sum + k.total, 0);
+  const monthKasbonLunas = kasbonAll.filter(
+    (k) => k.status === 'lunas' && k.paidAt && toMonthKey(new Date(k.paidAt)) === selectedMonth
+  );
+  const monthKasbonLunasTotal = monthKasbonLunas.reduce((sum, k) => sum + k.total, 0);
+
   function handleExportMonthCsv() {
-    const headers = ['Tanggal', 'Tipe', 'Deskripsi', 'Metode/Kategori', 'Kasir', 'Nominal'];
+    const headers = ['Tanggal', 'Tipe', 'Deskripsi', 'Metode/Kategori', 'Kasir', 'Pelanggan', 'Nominal'];
     const sortedMonthTx = [...monthActiveTx].sort(
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
@@ -283,6 +318,7 @@ export default function LaporanPage() {
         t.items.map((i) => `${i.name} x${i.quantity}${i.note ? ` (${i.note})` : ''}`).join('; '),
         t.paymentMethod === 'cash' ? 'Cash' : 'QRIS',
         t.operatorName ?? '-',
+        t.customerName ?? '-',
         t.total,
       ]),
       ...sortedMonthExp.map((e) => [
@@ -291,14 +327,18 @@ export default function LaporanPage() {
         e.name,
         '-',
         e.operatorName ?? '-',
+        '-',
         -e.amount,
       ]),
     ];
-    rows.push(['', '', '', '', 'Total Pemasukan', monthPemasukan]);
-    rows.push(['', '', '', '', 'Total Pengeluaran', -monthPengeluaranTotal]);
-    rows.push(['', '', '', '', 'Laba Bersih', monthLaba]);
-    rows.push(['', '', '', '', 'Total Modal (HPP) Terjual', -monthModalTerjual]);
-    rows.push(['', '', '', '', 'Laba Kotor (Margin Produk)', monthLabaKotor]);
+    rows.push(['', '', '', '', '', 'Total Pemasukan', monthPemasukan]);
+    rows.push(['', '', '', '', '', 'Total Pengeluaran', -monthPengeluaranTotal]);
+    rows.push(['', '', '', '', '', 'Laba Bersih', monthLaba]);
+    rows.push(['', '', '', '', '', 'Total Modal (HPP) Terjual', -monthModalTerjual]);
+    rows.push(['', '', '', '', '', 'Laba Kotor (Margin Produk)', monthLabaKotor]);
+    rows.push(['', '', '', '', '', 'Kasbon Baru Dicatat', monthKasbonBaruTotal]);
+    rows.push(['', '', '', '', '', 'Kasbon Lunas (sudah termasuk Pemasukan)', monthKasbonLunasTotal]);
+    rows.push(['', '', '', '', '', 'Kasbon Belum Lunas (saat ini)', totalKasbonBelumLunas]);
 
     downloadCsv(`rekap-bulanan-warkop27-${selectedMonth}.csv`, headers, rows);
   }
@@ -310,7 +350,7 @@ export default function LaporanPage() {
   );
 
   function handleExportCsv() {
-    const headers = ['Tanggal', 'Tipe', 'Deskripsi', 'Metode/Kategori', 'Kasir', 'Nominal'];
+    const headers = ['Tanggal', 'Tipe', 'Deskripsi', 'Metode/Kategori', 'Kasir', 'Pelanggan', 'Nominal'];
     const activeSorted = sorted.filter((t) => !t.voided);
     const rows: (string | number)[][] = [
       ...activeSorted.map((t) => [
@@ -319,6 +359,7 @@ export default function LaporanPage() {
         t.items.map((i) => `${i.name} x${i.quantity}${i.note ? ` (${i.note})` : ''}`).join('; '),
         t.paymentMethod === 'cash' ? 'Cash' : 'QRIS',
         t.operatorName ?? '-',
+        t.customerName ?? '-',
         t.total,
       ]),
       ...sortedPengeluaran.map((e) => [
@@ -327,14 +368,15 @@ export default function LaporanPage() {
         e.name,
         '-',
         e.operatorName ?? '-',
+        '-',
         -e.amount,
       ]),
     ];
-    rows.push(['', '', '', '', 'Total Pemasukan', totalPemasukan]);
-    rows.push(['', '', '', '', 'Total Pengeluaran', -totalPengeluaran]);
-    rows.push(['', '', '', '', 'Laba Bersih', labaBersih]);
-    rows.push(['', '', '', '', 'Total Modal (HPP) Terjual', -totalModalTerjual]);
-    rows.push(['', '', '', '', 'Laba Kotor (Margin Produk)', labaKotor]);
+    rows.push(['', '', '', '', '', 'Total Pemasukan', totalPemasukan]);
+    rows.push(['', '', '', '', '', 'Total Pengeluaran', -totalPengeluaran]);
+    rows.push(['', '', '', '', '', 'Laba Bersih', labaBersih]);
+    rows.push(['', '', '', '', '', 'Total Modal (HPP) Terjual', -totalModalTerjual]);
+    rows.push(['', '', '', '', '', 'Laba Kotor (Margin Produk)', labaKotor]);
 
     downloadCsv(`rekap-warkop27-${selectedDate}.csv`, headers, rows);
   }
@@ -749,7 +791,7 @@ export default function LaporanPage() {
                   type="text"
                   value={txQuery}
                   onChange={(e) => setTxQuery(e.target.value)}
-                  placeholder="Cari nama menu atau nominal..."
+                  placeholder="Cari nama menu, pelanggan, atau nominal..."
                   className="w-full bg-surface border border-cream-dark rounded-card pl-8 pr-8 py-1.5 text-sm text-espresso placeholder:text-espresso/40 focus:outline-none focus:border-crema"
                 />
                 {txQuery && (
@@ -796,6 +838,9 @@ export default function LaporanPage() {
                       .map((i) => `${i.name} x${i.quantity}${i.note ? ` (${i.note})` : ''}`)
                       .join(', ')}
                   </p>
+                  {t.customerName && (
+                    <p className="text-xs text-espresso/50">Atas nama: {t.customerName}</p>
+                  )}
                   {(t.source === 'kasbon_lunas' || t.voided) && (
                     <div className="flex gap-1.5 flex-wrap">
                       {t.source === 'kasbon_lunas' && (
@@ -855,6 +900,11 @@ export default function LaporanPage() {
                         {t.items
                           .map((i) => `${i.name} x${i.quantity}${i.note ? ` (${i.note})` : ''}`)
                           .join(', ')}
+                        {t.customerName && (
+                          <span className="block text-xs text-espresso/50 not-italic">
+                            Atas nama: {t.customerName}
+                          </span>
+                        )}
                         {t.source === 'kasbon_lunas' && (
                           <span className="ml-1.5 text-[10px] text-crema/90 bg-espresso/5 px-1.5 py-0.5 rounded whitespace-nowrap">
                             kasbon lunas
@@ -987,6 +1037,62 @@ export default function LaporanPage() {
         )}
       </section>
 
+      {/* Laporan Kasbon — ringkasan kondisi utang pelanggan saat ini, tidak
+          terikat ke tanggal/bulan yang dipilih di atas. */}
+      <section className="mb-6">
+        <h2 className="font-display font-semibold text-espresso mb-2 flex items-center gap-1.5">
+          <Receipt size={17} /> Laporan Kasbon
+        </h2>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="bg-surface rounded-card p-4 border border-cream-dark">
+            <div className="flex items-center gap-2 text-brick mb-1.5">
+              <Wallet size={16} />
+              <span className="text-xs font-medium">Belum Lunas</span>
+            </div>
+            <p className="font-display font-semibold text-espresso text-lg">
+              {formatRupiah(totalKasbonBelumLunas)}
+            </p>
+            <p className="text-[11px] text-espresso/50 mt-0.5">{belumLunasKasbon.length} catatan</p>
+          </div>
+          <div className="bg-surface rounded-card p-4 border border-cream-dark">
+            <div className="flex items-center gap-2 text-brick mb-1.5">
+              <AlertTriangle size={16} />
+              <span className="text-xs font-medium">Jatuh Tempo</span>
+            </div>
+            <p className="font-display font-semibold text-espresso text-lg">{kasbonJatuhTempoCount}</p>
+            <p className="text-[11px] text-espresso/50 mt-0.5">sudah ≥{KASBON_OVERDUE_DAYS} hari belum lunas</p>
+          </div>
+        </div>
+        <h3 className="text-xs font-medium text-espresso/60 mb-2">Pelanggan Berutang Terbesar</h3>
+        {topDebitur.length === 0 ? (
+          <p className="text-sm text-espresso/50 text-center py-8 bg-surface rounded-card border border-cream-dark">
+            Tidak ada kasbon yang belum lunas saat ini.
+          </p>
+        ) : (
+          <div className="bg-surface rounded-card border border-cream-dark p-4 space-y-3">
+            {topDebitur.map((d) => (
+              <div key={d.name}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-sm text-espresso font-medium truncate">{d.name}</span>
+                  <span className="text-xs text-espresso/50 whitespace-nowrap">
+                    {d.count} catatan · {formatRupiah(d.total)}
+                  </span>
+                </div>
+                <div className="h-1.5 bg-cream-dark rounded-full mt-1.5 overflow-hidden">
+                  <div
+                    className="h-full bg-brick rounded-full"
+                    style={{ width: `${maxDebiturTotal > 0 ? (d.total / maxDebiturTotal) * 100 : 0}%` }}
+                  />
+                </div>
+                {d.maxDays >= KASBON_OVERDUE_DAYS && (
+                  <p className="text-[11px] text-brick mt-1">Sudah {d.maxDays} hari belum lunas</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* Rekap Bulanan */}
       <section className="mb-6">
         <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
@@ -1024,6 +1130,35 @@ export default function LaporanPage() {
             <p className="text-[11px] text-cream/60 mt-0.5">{monthActiveTx.length} transaksi</p>
           </div>
         </div>
+
+        {/* Breakdown kasbon bulan ini */}
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="bg-surface rounded-card p-4 border border-cream-dark">
+            <div className="flex items-center gap-2 text-espresso/70 mb-1.5">
+              <Receipt size={16} />
+              <span className="text-xs font-medium">Kasbon Baru</span>
+            </div>
+            <p className="font-display font-semibold text-espresso text-lg">
+              {formatRupiah(monthKasbonBaruTotal)}
+            </p>
+            <p className="text-[11px] text-espresso/50 mt-0.5">{monthKasbonBaru.length} catatan</p>
+          </div>
+          <div className="bg-surface rounded-card p-4 border border-cream-dark">
+            <div className="flex items-center gap-2 text-sage mb-1.5">
+              <Wallet size={16} />
+              <span className="text-xs font-medium">Kasbon Lunas</span>
+            </div>
+            <p className="font-display font-semibold text-espresso text-lg">
+              {formatRupiah(monthKasbonLunasTotal)}
+            </p>
+            <p className="text-[11px] text-espresso/50 mt-0.5">{monthKasbonLunas.length} catatan</p>
+          </div>
+        </div>
+        <p className="text-[11px] text-espresso/40 mb-3">
+          Kasbon Lunas sudah termasuk dalam Pemasukan di atas. Kasbon Baru bukan pemasukan — baru
+          tercatat sebagai pemasukan saat pelanggannya melunasi.
+        </p>
+
         {monthActiveTx.length === 0 ? (
           <p className="text-sm text-espresso/50 text-center py-6 bg-surface rounded-card border border-cream-dark">
             Belum ada transaksi pada bulan ini.

@@ -142,15 +142,6 @@ export default function Sidebar({ onLogout }: { onLogout?: () => void }) {
             </Link>
           );
         })}
-        {activeOperatorName && (
-          <button
-            onClick={handleLogout}
-            className="flex flex-col items-center gap-0.5 px-2 py-1 text-[11px] text-[#FBF6EE]/70"
-          >
-            <LogOut size={20} />
-            Keluar
-          </button>
-        )}
       </nav>
     </>
   );

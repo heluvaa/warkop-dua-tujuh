@@ -57,6 +57,18 @@ export async function clearTransactionsByDate(dateKey: string): Promise<void> {
   );
 }
 
+// Memperbarui item/total transaksi yang sudah tercatat — dipakai saat kasbon
+// yang sudah lunas diedit, supaya transaksi pemasukan hasil pelunasannya
+// (source: 'kasbon_lunas') ikut disesuaikan dan Laporan tetap sinkron.
+export async function updateTransaction(
+  id: string,
+  data: Partial<Pick<Transaction, 'items' | 'total'>>
+): Promise<void> {
+  const all = await getAllTransactions();
+  const updated = all.map((t) => (t.id === id ? { ...t, ...data } : t));
+  await setItem(STORAGE_KEYS.TRANSACTIONS, updated);
+}
+
 // Membatalkan transaksi (void) tanpa menghapusnya dari riwayat, supaya tetap
 // tercatat untuk audit. Transaksi yang sudah voided dikecualikan dari total
 // laporan. Stok item terkait dikembalikan secara terpisah oleh pemanggil

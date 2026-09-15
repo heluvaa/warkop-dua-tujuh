@@ -1,6 +1,6 @@
 import { getItem, setItem, generateId, STORAGE_KEYS } from './db';
 import type { KasbonEntry } from '../types';
-import { createTransaction } from './transactionService';
+import { createTransaction, updateTransaction, voidTransaction } from './transactionService';
 import { getSettings } from './settingsService';
 import { sendTelegramNotification } from '../telegram';
 import { daysSince } from '../utils/date';
@@ -34,24 +34,50 @@ export async function createKasbon(
   return newEntry;
 }
 
-// Edit/hapus hanya untuk kasbon yang BELUM lunas — begitu lunas, kasbon
-// sudah tercatat sebagai transaksi pemasukan (lihat lunasiKasbon), jadi
-// mengubah/menghapusnya di sini tidak akan menyentuh catatan transaksi itu.
+// Edit kasbon juga boleh dilakukan setelah lunas. Kalau kasbon itu sudah
+// punya transactionId (dibuat otomatis saat lunasiKasbon), transaksi
+// pemasukan terkait di Laporan ikut diperbarui item & totalnya supaya tetap
+// sinkron dengan Buku Kasbon.
 export async function updateKasbon(
   id: string,
   data: Partial<Pick<KasbonEntry, 'customerName' | 'items' | 'total'>>
 ): Promise<void> {
   const all = await getAllKasbon();
+  const entry = all.find((k) => k.id === id);
   const updated = all.map((k) => (k.id === id ? { ...k, ...data } : k));
   await setItem(STORAGE_KEYS.KASBON, updated);
+
+  if (entry?.status === 'lunas' && entry.transactionId && (data.items || data.total !== undefined)) {
+    const trxPatch: Parameters<typeof updateTransaction>[1] = {};
+    if (data.items) {
+      trxPatch.items = data.items.map((i) => ({
+        menuItemId: '',
+        name: i.name,
+        price: i.price,
+        quantity: i.quantity,
+      }));
+    }
+    if (data.total !== undefined) {
+      trxPatch.total = data.total;
+    }
+    await updateTransaction(entry.transactionId, trxPatch);
+  }
 }
 
+// Hapus kasbon yang sudah lunas juga membatalkan (void, bukan menghapus)
+// transaksi pemasukan hasil pelunasannya, supaya Laporan tidak mencatat
+// pemasukan untuk kasbon yang sudah tidak ada lagi di Buku Kasbon.
 export async function deleteKasbon(id: string): Promise<void> {
   const all = await getAllKasbon();
+  const entry = all.find((k) => k.id === id);
   await setItem(
     STORAGE_KEYS.KASBON,
     all.filter((k) => k.id !== id)
   );
+
+  if (entry?.status === 'lunas' && entry.transactionId) {
+    await voidTransaction(entry.transactionId, 'Kasbon dihapus dari Buku Kasbon');
+  }
 }
 
 // Menandai kasbon lunas DAN otomatis mencatatnya sebagai pemasukan hari ini
@@ -61,17 +87,19 @@ export async function lunasiKasbon(id: string): Promise<void> {
   const entry = all.find((k) => k.id === id);
   if (!entry) return;
 
-  const updated = all.map((k) =>
-    k.id === id ? { ...k, status: 'lunas' as const, paidAt: new Date().toISOString() } : k
-  );
-  await setItem(STORAGE_KEYS.KASBON, updated);
-
-  await createTransaction({
+  const trx = await createTransaction({
     items: entry.items.map((i) => ({ menuItemId: '', name: i.name, price: i.price, quantity: i.quantity })),
     total: entry.total,
     paymentMethod: 'cash',
     source: 'kasbon_lunas',
   });
+
+  const updated = all.map((k) =>
+    k.id === id
+      ? { ...k, status: 'lunas' as const, paidAt: new Date().toISOString(), transactionId: trx.id }
+      : k
+  );
+  await setItem(STORAGE_KEYS.KASBON, updated);
 
   const settings = await getSettings();
   if (settings.kasbonPaidNotifyEnabled) {

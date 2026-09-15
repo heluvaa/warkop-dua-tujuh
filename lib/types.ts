@@ -51,6 +51,9 @@ export interface Transaction {
   // kejanggalan di laporan (misal banyak void dari satu kasir/menu tertentu).
   voidReason?: string;
   operatorName?: string;
+  // Nama pelanggan — opsional, diisi kasir kalau pesanan ini atas nama
+  // seseorang (mis. dipanggil saat pesanan siap, atau pre-order titip nama).
+  customerName?: string;
 }
 
 export type KasbonStatus = 'belum_lunas' | 'lunas';
@@ -63,6 +66,11 @@ export interface KasbonEntry {
   status: KasbonStatus;
   createdAt: string;
   paidAt?: string;
+  // ID transaksi pemasukan yang otomatis dibuat saat kasbon ini dilunasi
+  // (lihat lunasiKasbon) — dipakai untuk ikut memperbarui/membatalkan
+  // transaksi itu kalau kasbon yang sudah lunas diedit/dihapus, supaya
+  // Laporan tetap sinkron dengan Buku Kasbon.
+  transactionId?: string;
 }
 
 export interface PengeluaranEntry {

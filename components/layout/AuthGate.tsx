@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import type { Operator } from '@/lib/types';
-import { getAllOperators, getActiveOperator, setActiveOperator, createOperator } from '@/lib/storage/operatorService';
+import { getAllOperators, getActiveOperator, setActiveOperator, clearActiveOperator, createOperator } from '@/lib/storage/operatorService';
 import OperatorGate from '@/components/kasir/OperatorGate';
+import OperatorBadge from './OperatorBadge';
 import Sidebar from './Sidebar';
 
 /**
@@ -23,20 +24,20 @@ import Sidebar from './Sidebar';
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [checking, setChecking] = useState(true);
   const [operators, setOperators] = useState<Operator[]>([]);
-  const [unlocked, setUnlocked] = useState(false);
+  const [activeOperatorName, setActiveOperatorName] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       setOperators(await getAllOperators());
       const session = await getActiveOperator();
-      setUnlocked(!!session);
+      setActiveOperatorName(session?.operatorName ?? null);
       setChecking(false);
     })();
   }, []);
 
   async function handleUnlock(operator: Operator) {
     await setActiveOperator(operator);
-    setUnlocked(true);
+    setActiveOperatorName(operator.name);
   }
 
   // Hanya dipakai saat operators.length === 0 — bikin akun kasir pertama
@@ -48,10 +49,15 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     await handleUnlock(operator);
   }
 
+  async function handleLogout() {
+    await clearActiveOperator();
+    setActiveOperatorName(null);
+  }
+
   // Cegah "kedip" nampilin layar login sebentar sebelum sesi dicek.
   if (checking) return null;
 
-  if (!unlocked) {
+  if (!activeOperatorName) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-cream px-4">
         <OperatorGate
@@ -65,8 +71,11 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen">
-      <Sidebar onLogout={() => setUnlocked(false)} />
-      <main className="flex-1 pb-16 md:pb-0 min-h-screen">{children}</main>
+      <Sidebar onLogout={handleLogout} />
+      <div className="flex-1 flex flex-col min-h-screen min-w-0">
+        <OperatorBadge name={activeOperatorName} onLogout={handleLogout} />
+        <main className="flex-1 pb-16 md:pb-0">{children}</main>
+      </div>
     </div>
   );
 }

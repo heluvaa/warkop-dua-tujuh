@@ -3,10 +3,12 @@
 import { useState } from 'react';
 import type { CartItem } from '@/lib/types';
 import { formatRupiah } from '@/lib/utils/format';
-import { Minus, Plus, Trash2, MessageSquarePlus } from 'lucide-react';
+import { Minus, Plus, Trash2, MessageSquarePlus, User } from 'lucide-react';
 
 export default function Cart({
   cart,
+  customerName,
+  onCustomerNameChange,
   onIncrement,
   onDecrement,
   onRemove,
@@ -14,6 +16,8 @@ export default function Cart({
   onCheckout,
 }: {
   cart: CartItem[];
+  customerName: string;
+  onCustomerNameChange: (value: string) => void;
   onIncrement: (id: string) => void;
   onDecrement: (id: string) => void;
   onRemove: (id: string) => void;
@@ -28,6 +32,22 @@ export default function Cart({
   return (
     <div className="flex flex-col h-full">
       <h2 className="font-display font-semibold text-espresso text-lg px-4 pt-4">Pesanan</h2>
+
+      {cart.length > 0 && (
+        <div className="px-4 pt-3">
+          <div className="relative">
+            <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-espresso/40 pointer-events-none" />
+            <input
+              type="text"
+              value={customerName}
+              onChange={(e) => onCustomerNameChange(e.target.value)}
+              placeholder="Nama pelanggan (opsional)"
+              maxLength={40}
+              className="w-full text-sm bg-surface border border-cream-dark rounded-card pl-8 pr-3 py-2 text-espresso placeholder:text-espresso/40 outline-none focus:border-espresso"
+            />
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3">
         {cart.length === 0 ? (

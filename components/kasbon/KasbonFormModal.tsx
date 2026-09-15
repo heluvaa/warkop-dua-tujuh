@@ -27,6 +27,7 @@ export default function KasbonFormModal({
   const [menuQuery, setMenuQuery] = useState('');
 
   const isEditing = Boolean(initial);
+  const isEditingLunas = isEditing && initial?.status === 'lunas';
 
   useEffect(() => {
     (async () => setMenu(await getAllMenu()))();
@@ -79,6 +80,12 @@ export default function KasbonFormModal({
             <X size={20} className="text-espresso/60" />
           </button>
         </div>
+
+        {isEditingLunas && (
+          <p className="text-xs text-espresso/60 bg-surface border border-cream-dark rounded-card px-3 py-2">
+            Kasbon ini sudah lunas. Perubahan akan ikut memperbarui transaksi pemasukan terkait di Laporan.
+          </p>
+        )}
 
         <div>
           <label className="text-xs text-espresso/60">Nama Pelanggan</label>

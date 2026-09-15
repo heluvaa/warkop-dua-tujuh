@@ -55,26 +55,24 @@ export default function KasbonListItem({
       <div className="flex items-center justify-between mt-3">
         <span className="font-semibold text-espresso">{formatRupiah(entry.total)}</span>
         <div className="flex items-center gap-1.5">
+          <button
+            onClick={onEdit}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-cream-dark text-espresso"
+            aria-label="Edit kasbon"
+          >
+            <Pencil size={14} />
+          </button>
+          <button
+            onClick={onDelete}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-brick/10 text-brick"
+            aria-label="Hapus kasbon"
+          >
+            <Trash2 size={14} />
+          </button>
           {!lunas && (
-            <>
-              <button
-                onClick={onEdit}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-cream-dark text-espresso"
-                aria-label="Edit kasbon"
-              >
-                <Pencil size={14} />
-              </button>
-              <button
-                onClick={onDelete}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-brick/10 text-brick"
-                aria-label="Hapus kasbon"
-              >
-                <Trash2 size={14} />
-              </button>
-              <button onClick={onLunasi} className="text-sm bg-espresso text-cream px-4 py-1.5 rounded-card">
-                Lunasi
-              </button>
-            </>
+            <button onClick={onLunasi} className="text-sm bg-espresso text-cream px-4 py-1.5 rounded-card">
+              Lunasi
+            </button>
           )}
         </div>
       </div>

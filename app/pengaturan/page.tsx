@@ -16,8 +16,6 @@ import {
   AlertTriangle,
   Bell,
   Send,
-  Eye,
-  EyeOff,
 } from 'lucide-react';
 import {
   downloadBackup,
@@ -57,7 +55,6 @@ export default function PengaturanPage() {
   const [operators, setOperators] = useState<Operator[]>([]);
   const [showOperatorForm, setShowOperatorForm] = useState(false);
   const [editingOperator, setEditingOperator] = useState<Operator | null>(null);
-  const [visiblePinId, setVisiblePinId] = useState<string | null>(null);
   const [confirmDeleteOperatorId, setConfirmDeleteOperatorId] = useState<string | null>(null);
 
   async function refreshBackupStatus() {
