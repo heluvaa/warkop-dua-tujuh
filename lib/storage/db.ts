@@ -74,6 +74,37 @@ export function generateId(prefix = 'id'): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * Versi getItem/setItem yang SELALU pakai localStorage, tidak pernah lewat
+ * Supabase — meski Supabase sudah dikonfigurasi.
+ *
+ * Dipakai khusus untuk data yang memang harus per-device (bukan data warung
+ * yang perlu sinkron), contohnya sesi "siapa kasir yang lagi login" di
+ * operatorService.ts. Kalau session itu ikut disimpan ke Supabase, status
+ * login jadi 1 status GLOBAL yang dibagi ke semua device — akibatnya kasir A
+ * login di HP-nya, lalu kasir B buka web di HP lain malah ikut ke-login
+ * sebagai kasir A. localStorage per-device menghindari itu.
+ */
+export function getLocalItem<T>(key: string, fallback: T): T {
+  if (!isBrowser) return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch (err) {
+    console.error(`[storage] Gagal membaca key lokal "${key}"`, err);
+    return fallback;
+  }
+}
+
+export function setLocalItem<T>(key: string, value: T): void {
+  if (!isBrowser) return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {
+    console.error(`[storage] Gagal menyimpan key lokal "${key}"`, err);
+  }
+}
+
 // Semua key localStorage terpusat di sini supaya gampang ditelusuri/diubah.
 export const STORAGE_KEYS = {
   MENU: 'warkop27_menu',

@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Fraunces, Manrope } from 'next/font/google';
 import './globals.css';
-import Sidebar from '@/components/layout/Sidebar';
+import AuthGate from '@/components/layout/AuthGate';
 import TelegramCommandListener from '@/components/telegram/TelegramCommandListener';
 import ServiceWorkerRegister from '@/components/pwa/ServiceWorkerRegister';
 
@@ -63,10 +63,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className={`${fraunces.variable} ${manrope.variable} font-sans bg-cream text-espresso-dark min-h-screen antialiased`}>
-        <div className="flex flex-col md:flex-row min-h-screen">
-          <Sidebar />
-          <main className="flex-1 pb-16 md:pb-0 min-h-screen">{children}</main>
-        </div>
+        <AuthGate>{children}</AuthGate>
         <TelegramCommandListener />
         <ServiceWorkerRegister />
       </body>

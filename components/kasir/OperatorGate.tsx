@@ -9,13 +9,21 @@ const PIN_LENGTH = 4;
 export default function OperatorGate({
   operators,
   onUnlock,
+  onCreateFirstOperator,
 }: {
   operators: Operator[];
   onUnlock: (operator: Operator) => void;
+  // Kalau disediakan, dipakai untuk bikin akun kasir PERTAMA langsung dari
+  // layar ini saat belum ada operator sama sekali — supaya tidak
+  // ke-lock total (Pengaturan, tempat biasanya nambah kasir, sekarang ikut
+  // terkunci di balik gate ini juga).
+  onCreateFirstOperator?: (data: { name: string; pin: string }) => void | Promise<void>;
 }) {
   const [selected, setSelected] = useState<Operator | null>(null);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newPin, setNewPin] = useState('');
 
   function pickOperator(op: Operator) {
     setSelected(op);
@@ -39,13 +47,58 @@ export default function OperatorGate({
   }
 
   if (operators.length === 0) {
+    if (!onCreateFirstOperator) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center">
+          <Coffee size={32} className="text-espresso/40 mb-3" />
+          <p className="text-espresso font-medium mb-1">Belum ada akun kasir</p>
+          <p className="text-sm text-espresso/60 max-w-xs">
+            Tambahkan kasir dulu di halaman Pengaturan &rarr; Kasir & Shift supaya bisa mulai jualan.
+          </p>
+        </div>
+      );
+    }
+
+    const isNewValid = newName.trim().length > 0 && /^\d{4}$/.test(newPin);
+
     return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center">
-        <Coffee size={32} className="text-espresso/40 mb-3" />
-        <p className="text-espresso font-medium mb-1">Belum ada akun kasir</p>
-        <p className="text-sm text-espresso/60 max-w-xs">
-          Tambahkan kasir dulu di halaman Pengaturan &rarr; Kasir & Shift supaya bisa mulai jualan.
+      <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 w-full">
+        <Coffee size={28} className="text-caramel mb-3" />
+        <h1 className="font-display font-semibold text-lg text-espresso mb-1">Selamat datang!</h1>
+        <p className="text-sm text-espresso/60 mb-6 text-center max-w-xs">
+          Belum ada akun kasir. Bikin akun kasir pertama dulu untuk mulai pakai aplikasi ini.
         </p>
+        <div className="w-full max-w-xs space-y-3">
+          <div>
+            <label className="text-xs text-espresso/60">Nama Kasir</label>
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Budi"
+              className="w-full border border-cream-dark rounded-card px-4 py-2.5 bg-surface text-espresso mt-1 focus:outline-none focus:border-espresso"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-espresso/60">PIN (4 digit)</label>
+            <input
+              inputMode="numeric"
+              value={newPin}
+              onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              placeholder="1234"
+              className="w-full border border-cream-dark rounded-card px-4 py-2.5 bg-surface text-espresso mt-1 focus:outline-none focus:border-espresso tracking-widest"
+            />
+          </div>
+          <button
+            onClick={() => isNewValid && onCreateFirstOperator({ name: newName.trim(), pin: newPin })}
+            disabled={!isNewValid}
+            className="w-full bg-espresso text-cream rounded-card py-3 font-medium disabled:opacity-40"
+          >
+            Buat & Masuk
+          </button>
+          <p className="text-[11px] text-espresso/50 text-center">
+            PIN cuma buat identifikasi shift, bukan keamanan data — pakai angka yang gampang diingat. Kasir lain bisa ditambahkan nanti di halaman Pengaturan.
+          </p>
+        </div>
       </div>
     );
   }

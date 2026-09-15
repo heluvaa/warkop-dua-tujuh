@@ -520,7 +520,9 @@ export default function PengaturanPage() {
                 className="flex items-center gap-3 bg-cream rounded-card p-2.5 border border-cream-dark"
               >
                 <span className="flex-1 min-w-0 text-sm font-medium text-espresso truncate">{op.name}</span>
-                <span className="text-xs text-espresso/40 tracking-widest shrink-0">PIN {op.pin}</span>
+                <span className="text-xs text-espresso/40 tracking-widest shrink-0">
+                  PIN {'•'.repeat(op.pin.length)}
+                </span>
                 <button
                   onClick={() => {
                     setEditingOperator(op);

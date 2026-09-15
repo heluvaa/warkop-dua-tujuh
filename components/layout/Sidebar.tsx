@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ShoppingCart, BookUser, Receipt, UtensilsCrossed, BarChart3, Coffee, Settings, UserRound, type LucideIcon } from 'lucide-react';
+import { ShoppingCart, BookUser, Receipt, UtensilsCrossed, BarChart3, Coffee, Settings, UserRound, LogOut, type LucideIcon } from 'lucide-react';
 import { getAllKasbon } from '@/lib/storage/kasbonService';
 import { getDaysSinceLastBackup } from '@/lib/storage/backupService';
-import { getActiveOperator } from '@/lib/storage/operatorService';
+import { getActiveOperator, clearActiveOperator } from '@/lib/storage/operatorService';
 import { daysSince } from '@/lib/utils/date';
 import { KASBON_OVERDUE_DAYS, BACKUP_REMINDER_DAYS } from '@/lib/constants';
 import ThemeToggle from '@/components/theme/ThemeToggle';
@@ -27,11 +27,16 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/pengaturan', label: 'Pengaturan', icon: Settings },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ onLogout }: { onLogout?: () => void }) {
   const pathname = usePathname();
   const [kasbonOverdue, setKasbonOverdue] = useState(0);
   const [backupOverdue, setBackupOverdue] = useState(false);
   const [activeOperatorName, setActiveOperatorName] = useState<string | null>(null);
+
+  async function handleLogout() {
+    await clearActiveOperator();
+    onLogout?.();
+  }
 
   useEffect(() => {
     async function checkOverdue() {
@@ -66,9 +71,18 @@ export default function Sidebar() {
         </div>
 
         {activeOperatorName && (
-          <div className="flex items-center gap-2 -mt-4 -mb-2 text-[#FBF6EE]/70 text-xs">
-            <UserRound size={13} />
-            <span>Kasir jaga: <span className="font-medium text-[#FBF6EE]">{activeOperatorName}</span></span>
+          <div className="flex items-center justify-between gap-2 -mt-4 -mb-2 text-[#FBF6EE]/70 text-xs">
+            <span className="flex items-center gap-2 min-w-0">
+              <UserRound size={13} className="shrink-0" />
+              <span className="truncate">Kasir jaga: <span className="font-medium text-[#FBF6EE]">{activeOperatorName}</span></span>
+            </span>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1 shrink-0 text-[#FBF6EE]/70 hover:text-[#FBF6EE]"
+              title="Keluar / ganti kasir"
+            >
+              <LogOut size={13} />
+            </button>
           </div>
         )}
 
@@ -128,6 +142,15 @@ export default function Sidebar() {
             </Link>
           );
         })}
+        {activeOperatorName && (
+          <button
+            onClick={handleLogout}
+            className="flex flex-col items-center gap-0.5 px-2 py-1 text-[11px] text-[#FBF6EE]/70"
+          >
+            <LogOut size={20} />
+            Keluar
+          </button>
+        )}
       </nav>
     </>
   );
