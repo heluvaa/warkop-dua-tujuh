@@ -524,20 +524,8 @@ export default function PengaturanPage() {
               >
                 <span className="flex-1 min-w-0 text-sm font-medium text-espresso truncate">{op.name}</span>
                 <span className="text-xs text-espresso/40 tracking-widest shrink-0">
-<<<<<<< HEAD
                   PIN {'•'.repeat(op.pin.length)}
                 </span>
-=======
-                  PIN {visiblePinId === op.id ? op.pin : '•'.repeat(op.pin.length)}
-                </span>
-                <button
-                  onClick={() => setVisiblePinId((cur) => (cur === op.id ? null : op.id))}
-                  className="w-7 h-7 flex items-center justify-center rounded-full bg-cream-dark text-espresso/60"
-                  aria-label={visiblePinId === op.id ? 'Sembunyikan PIN' : 'Lihat PIN'}
-                >
-                  {visiblePinId === op.id ? <EyeOff size={13} /> : <Eye size={13} />}
-                </button>
->>>>>>> 3c6d09c8cc184d5967fee4975aef12a991e7bc60
                 <button
                   onClick={() => {
                     setEditingOperator(op);
