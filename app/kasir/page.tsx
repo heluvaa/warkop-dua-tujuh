@@ -2,23 +2,35 @@
 
 import { useEffect, useState } from 'react';
 import { ChevronUp, X } from 'lucide-react';
-import type { CartItem, MenuItem, PaymentMethod } from '@/lib/types';
+import type { CartItem, MenuItem, CheckoutMethod, SplitPaymentDetail, SelectedVariant } from '@/lib/types';
 import { formatRupiah } from '@/lib/utils/format';
 import { getAllMenu, decrementStock, seedMenuIfEmpty, toggleFavorite } from '@/lib/storage/menuService';
-import { createTransaction } from '@/lib/storage/transactionService';
+import { createTransaction, updateTransaction } from '@/lib/storage/transactionService';
+import { createPendingOrder } from '@/lib/storage/pendingOrderService';
+import { createKasbon } from '@/lib/storage/kasbonService';
 import { getActiveOperator } from '@/lib/storage/operatorService';
+import {
+  buildCartLineId,
+  computeVariantExtra,
+  formatSelectedVariantLabel,
+  hasAnyVariantConfig,
+} from '@/lib/utils/variant';
 import MenuGrid from '@/components/pos/MenuGrid';
 import Cart from '@/components/pos/Cart';
 import PaymentModal from '@/components/pos/PaymentModal';
 import ReceiptModal from '@/components/pos/ReceiptModal';
+import VariantPickerModal from '@/components/pos/VariantPickerModal';
 
 interface ReceiptData {
   items: CartItem[];
   total: number;
-  method: PaymentMethod;
+  method: CheckoutMethod;
   cashReceived?: number;
+  splitDetail?: SplitPaymentDetail;
   change?: number;
   customerName?: string;
+  operatorName?: string;
+  createdAt?: string;
 }
 
 export default function KasirPage() {
@@ -29,6 +41,11 @@ export default function KasirPage() {
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [activeOperatorName, setActiveOperatorName] = useState<string | null>(null);
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
+  // Menu yang sedang dipilih variannya (ukuran/level gula-es/topping) lewat
+  // VariantPickerModal — hanya terisi untuk menu yang punya konfigurasi
+  // varian (lihat handleAdd). Menu tanpa varian langsung masuk keranjang
+  // tanpa lewat state ini sama sekali.
+  const [variantPickerItem, setVariantPickerItem] = useState<MenuItem | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -41,7 +58,7 @@ export default function KasirPage() {
     })();
   }, []);
 
-  const total = cart.reduce((sum, c) => sum + c.menuItem.price * c.quantity, 0);
+  const total = cart.reduce((sum, c) => sum + c.unitPrice * c.quantity, 0);
 
   // Reset nama pelanggan begitu keranjang kosong (baik karena checkout
   // selesai maupun semua item dihapus manual) supaya tidak kebawa ke
@@ -50,39 +67,69 @@ export default function KasirPage() {
     if (cart.length === 0) setCustomerName('');
   }, [cart.length]);
 
-  function handleAdd(item: MenuItem) {
+  // Total quantity menu yang sama di keranjang, DIJUMLAHKAN LINTAS baris
+  // varian — mis. 1 Kopi Susu Regular + 2 Kopi Susu Large tetap dibatasi
+  // oleh stok "Kopi Susu" yang sama (stok tersimpan per menu, bukan per
+  // varian).
+  function totalQtyForMenuItem(cartState: CartItem[], menuItemId: string): number {
+    return cartState
+      .filter((c) => c.menuItem.id === menuItemId)
+      .reduce((sum, c) => sum + c.quantity, 0);
+  }
+
+  // Menambahkan menu ke keranjang dengan varian yang sudah dipilih (atau
+  // tanpa varian sama sekali kalau menunya memang tidak punya konfigurasi
+  // varian). Baris dengan menu + pilihan varian yang PERSIS SAMA digabung
+  // (quantity bertambah); kombinasi berbeda jadi baris baru.
+  function addToCart(item: MenuItem, variant?: SelectedVariant) {
+    const lineId = buildCartLineId(item.id, variant);
     setCart((prev) => {
-      const existing = prev.find((c) => c.menuItem.id === item.id);
+      if (totalQtyForMenuItem(prev, item.id) >= item.stock) return prev; // tidak bisa lebihi stok
+      const existing = prev.find((c) => c.id === lineId);
       if (existing) {
-        if (existing.quantity >= item.stock) return prev; // tidak bisa lebihi stok
-        return prev.map((c) =>
-          c.menuItem.id === item.id ? { ...c, quantity: c.quantity + 1 } : c
-        );
+        return prev.map((c) => (c.id === lineId ? { ...c, quantity: c.quantity + 1 } : c));
       }
-      return [...prev, { menuItem: item, quantity: 1 }];
+      const unitPrice = item.price + computeVariantExtra(variant);
+      return [...prev, { id: lineId, menuItem: item, quantity: 1, variant, unitPrice }];
     });
   }
 
-  function handleIncrement(id: string) {
-    setCart((prev) =>
-      prev.map((c) => {
-        if (c.menuItem.id !== id) return c;
-        if (c.quantity >= c.menuItem.stock) return c;
-        return { ...c, quantity: c.quantity + 1 };
-      })
-    );
+  // Dipanggil saat kasir tap kartu menu di grid — kalau menunya punya
+  // konfigurasi varian, buka dialog pilihan dulu; kalau tidak, langsung
+  // masuk keranjang seperti biasa (perilaku sama seperti sebelum fitur
+  // varian ada).
+  function handleAdd(item: MenuItem) {
+    if (hasAnyVariantConfig(item.variants)) {
+      setVariantPickerItem(item);
+    } else {
+      addToCart(item);
+    }
   }
 
-  function handleDecrement(id: string) {
+  function handleConfirmVariant(variant: SelectedVariant) {
+    if (variantPickerItem) addToCart(variantPickerItem, variant);
+    setVariantPickerItem(null);
+  }
+
+  function handleIncrement(lineId: string) {
+    setCart((prev) => {
+      const line = prev.find((c) => c.id === lineId);
+      if (!line) return prev;
+      if (totalQtyForMenuItem(prev, line.menuItem.id) >= line.menuItem.stock) return prev;
+      return prev.map((c) => (c.id === lineId ? { ...c, quantity: c.quantity + 1 } : c));
+    });
+  }
+
+  function handleDecrement(lineId: string) {
     setCart((prev) =>
       prev
-        .map((c) => (c.menuItem.id === id ? { ...c, quantity: c.quantity - 1 } : c))
+        .map((c) => (c.id === lineId ? { ...c, quantity: c.quantity - 1 } : c))
         .filter((c) => c.quantity > 0)
     );
   }
 
-  function handleRemove(id: string) {
-    setCart((prev) => prev.filter((c) => c.menuItem.id !== id));
+  function handleRemove(lineId: string) {
+    setCart((prev) => prev.filter((c) => c.id !== lineId));
   }
 
   async function handleToggleFavorite(id: string) {
@@ -90,31 +137,86 @@ export default function KasirPage() {
     setMenu(await getAllMenu());
   }
 
-  function handleNoteChange(id: string, note: string) {
-    setCart((prev) => prev.map((c) => (c.menuItem.id === id ? { ...c, note } : c)));
+  function handleNoteChange(lineId: string, note: string) {
+    setCart((prev) => prev.map((c) => (c.id === lineId ? { ...c, note } : c)));
   }
 
-  async function handleConfirmPayment(method: PaymentMethod, cashReceived?: number) {
+  async function handleConfirmPayment(
+    method: CheckoutMethod,
+    payload?: { cashReceived?: number; splitDetail?: SplitPaymentDetail; kasbonCustomerName?: string }
+  ) {
     const trimmedCustomerName = customerName.trim() || undefined;
-    await createTransaction({
-      items: cart.map((c) => ({
-        menuItemId: c.menuItem.id,
-        name: c.menuItem.name,
-        price: c.menuItem.price,
-        // Snapshot HPP saat ini supaya laporan margin transaksi ini tidak
-        // ikut berubah kalau HPP menu diedit belakangan.
-        hpp: c.menuItem.hpp ?? 0,
-        quantity: c.quantity,
-        note: c.note?.trim() || undefined,
-      })),
-      total,
-      paymentMethod: method,
-      cashReceived,
-      change: cashReceived !== undefined ? cashReceived - total : undefined,
-      source: 'pos',
-      operatorName: activeOperatorName ?? undefined,
-      customerName: trimmedCustomerName,
-    });
+    const cashReceived = payload?.cashReceived;
+    const lineItems = cart.map((c) => ({
+      menuItemId: c.menuItem.id,
+      name: c.menuItem.name,
+      // unitPrice sudah termasuk tambahan ukuran/level gula-es/topping.
+      price: c.unitPrice,
+      // Snapshot HPP saat ini supaya laporan margin transaksi ini tidak
+      // ikut berubah kalau HPP menu diedit belakangan.
+      hpp: c.menuItem.hpp ?? 0,
+      quantity: c.quantity,
+      note: c.note?.trim() || undefined,
+      variantLabel: formatSelectedVariantLabel(c.variant),
+    }));
+
+    if (method === 'belum_bayar') {
+      // Belum dibayar sama sekali saat ini — disimpan dulu ke daftar
+      // "Belum Bayar", nanti ditandai lunas atau dipindah ke Kasbon dari
+      // sana. Stok tetap dipotong sekarang karena pesanannya sudah dibuat.
+      await createPendingOrder({
+        items: lineItems,
+        total,
+        customerName: trimmedCustomerName,
+        operatorName: activeOperatorName ?? undefined,
+      });
+    } else if (method === 'split') {
+      // Split pembayaran: bagian cash/QRIS (kalau ada) langsung dicatat
+      // sebagai pemasukan sekarang; bagian kasbon (kalau ada) langsung
+      // dicatat sebagai utang baru atas nama pelanggan — mis. "separo dulu
+      // ya, sisanya besok" tidak perlu lewat halaman Belum Bayar dulu.
+      const split = payload!.splitDetail!;
+      const collected = split.cash + split.qris;
+      let trxId: string | undefined;
+      if (collected > 0) {
+        const trx = await createTransaction({
+          items: lineItems,
+          total: collected,
+          paymentMethod: 'split',
+          splitDetail: split,
+          source: 'pos',
+          operatorName: activeOperatorName ?? undefined,
+          customerName: trimmedCustomerName,
+        });
+        trxId = trx.id;
+      }
+      if (split.kasbon > 0) {
+        const kasbonName = (payload?.kasbonCustomerName || trimmedCustomerName || '').trim();
+        const kasbon = await createKasbon({
+          customerName: kasbonName,
+          items: lineItems.map((i) => ({
+            name: i.name,
+            price: i.price,
+            quantity: i.quantity,
+            variantLabel: i.variantLabel,
+          })),
+          total: split.kasbon,
+          originTransactionId: trxId,
+        });
+        if (trxId) await updateTransaction(trxId, { linkedKasbonId: kasbon.id });
+      }
+    } else {
+      await createTransaction({
+        items: lineItems,
+        total,
+        paymentMethod: method,
+        cashReceived,
+        change: cashReceived !== undefined ? cashReceived - total : undefined,
+        source: 'pos',
+        operatorName: activeOperatorName ?? undefined,
+        customerName: trimmedCustomerName,
+      });
+    }
 
     for (const c of cart) {
       await decrementStock(c.menuItem.id, c.quantity);
@@ -125,8 +227,11 @@ export default function KasirPage() {
       total,
       method,
       cashReceived,
+      splitDetail: payload?.splitDetail,
       change: cashReceived !== undefined ? cashReceived - total : undefined,
       customerName: trimmedCustomerName,
+      operatorName: activeOperatorName ?? undefined,
+      createdAt: new Date().toISOString(),
     });
     setShowPayment(false);
     setCartSheetOpen(false);
@@ -217,12 +322,21 @@ export default function KasirPage() {
       {showPayment && (
         <PaymentModal
           total={total}
+          defaultCustomerName={customerName}
           onClose={() => setShowPayment(false)}
           onConfirm={handleConfirmPayment}
         />
       )}
 
       {receipt && <ReceiptModal {...receipt} onClose={() => setReceipt(null)} />}
+
+      {variantPickerItem && (
+        <VariantPickerModal
+          item={variantPickerItem}
+          onClose={() => setVariantPickerItem(null)}
+          onConfirm={handleConfirmVariant}
+        />
+      )}
     </div>
   );
 }

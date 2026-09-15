@@ -13,9 +13,10 @@ import type {
   PengeluaranEntry,
   Operator,
   StockPurchaseEntry,
+  PendingOrder,
 } from '../types';
 
-const BACKUP_VERSION = 3;
+const BACKUP_VERSION = 4;
 
 export interface BackupData {
   version: number;
@@ -28,11 +29,12 @@ export interface BackupData {
     settings: unknown;
     operators?: Operator[];
     stockPurchases?: StockPurchaseEntry[];
+    pendingOrders?: PendingOrder[];
   };
 }
 
 export async function buildBackup(): Promise<BackupData> {
-  const [menu, transactions, kasbon, pengeluaran, settings, operators, stockPurchases] =
+  const [menu, transactions, kasbon, pengeluaran, settings, operators, stockPurchases, pendingOrders] =
     await Promise.all([
       getItem<MenuItem[]>(STORAGE_KEYS.MENU, []),
       getItem<Transaction[]>(STORAGE_KEYS.TRANSACTIONS, []),
@@ -41,12 +43,13 @@ export async function buildBackup(): Promise<BackupData> {
       getItem<unknown>(STORAGE_KEYS.SETTINGS, {}),
       getItem<Operator[]>(STORAGE_KEYS.OPERATORS, []),
       getItem<StockPurchaseEntry[]>(STORAGE_KEYS.STOCK_PURCHASES, []),
+      getItem<PendingOrder[]>(STORAGE_KEYS.PENDING_ORDERS, []),
     ]);
 
   return {
     version: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
-    data: { menu, transactions, kasbon, pengeluaran, settings, operators, stockPurchases },
+    data: { menu, transactions, kasbon, pengeluaran, settings, operators, stockPurchases, pendingOrders },
   };
 }
 
@@ -125,7 +128,7 @@ export async function restoreBackup(file: File): Promise<void> {
 
   assertValidBackup(parsed);
 
-  const { menu, transactions, kasbon, pengeluaran, settings, operators, stockPurchases } =
+  const { menu, transactions, kasbon, pengeluaran, settings, operators, stockPurchases, pendingOrders } =
     parsed.data;
 
   await Promise.all([
@@ -134,12 +137,15 @@ export async function restoreBackup(file: File): Promise<void> {
     setItem(STORAGE_KEYS.KASBON, kasbon),
     setItem(STORAGE_KEYS.PENGELUARAN, pengeluaran),
     setItem(STORAGE_KEYS.SETTINGS, settings ?? {}),
-    // operators & stockPurchases baru ada mulai versi backup 2/3 — file lama
-    // tidak punya field ini, jadi jangan timpa data yang sudah ada di device
-    // dengan array kosong.
+    // operators, stockPurchases & pendingOrders baru ada mulai versi backup
+    // 2/3/4 — file lama tidak punya field ini, jadi jangan timpa data yang
+    // sudah ada di device dengan array kosong.
     ...(Array.isArray(operators) ? [setItem(STORAGE_KEYS.OPERATORS, operators)] : []),
     ...(Array.isArray(stockPurchases)
       ? [setItem(STORAGE_KEYS.STOCK_PURCHASES, stockPurchases)]
+      : []),
+    ...(Array.isArray(pendingOrders)
+      ? [setItem(STORAGE_KEYS.PENDING_ORDERS, pendingOrders)]
       : []),
   ]);
 }

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { CartItem } from '@/lib/types';
 import { formatRupiah } from '@/lib/utils/format';
+import { formatSelectedVariantLabel } from '@/lib/utils/variant';
 import { Minus, Plus, Trash2, MessageSquarePlus, User } from 'lucide-react';
 
 export default function Cart({
@@ -24,7 +25,7 @@ export default function Cart({
   onNoteChange: (id: string, note: string) => void;
   onCheckout: () => void;
 }) {
-  const total = cart.reduce((sum, c) => sum + c.menuItem.price * c.quantity, 0);
+  const total = cart.reduce((sum, c) => sum + c.unitPrice * c.quantity, 0);
   // Melacak item mana yang sedang menampilkan input catatan, supaya tidak
   // semua item langsung terbuka kolomnya sekaligus.
   const [openNoteFor, setOpenNoteFor] = useState<string | null>(null);
@@ -53,39 +54,44 @@ export default function Cart({
         {cart.length === 0 ? (
           <p className="text-sm text-espresso/50 text-center py-8">Keranjang masih kosong.</p>
         ) : (
-          cart.map(({ menuItem, quantity, note }) => (
-            <div key={menuItem.id} className="space-y-1.5">
+          cart.map(({ id, menuItem, quantity, note, variant, unitPrice }) => (
+            <div key={id} className="space-y-1.5">
               <div className="flex items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-espresso truncate">{menuItem.name}</p>
-                  <p className="text-xs text-espresso/50">{formatRupiah(menuItem.price)}</p>
+                  {formatSelectedVariantLabel(variant) && (
+                    <p className="text-[11px] text-espresso/50 truncate">
+                      {formatSelectedVariantLabel(variant)}
+                    </p>
+                  )}
+                  <p className="text-xs text-espresso/50">{formatRupiah(unitPrice)}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => onDecrement(menuItem.id)}
+                    onClick={() => onDecrement(id)}
                     className="w-6 h-6 flex items-center justify-center rounded-full bg-cream-dark text-espresso"
                   >
                     <Minus size={12} />
                   </button>
                   <span className="text-sm w-4 text-center">{quantity}</span>
                   <button
-                    onClick={() => onIncrement(menuItem.id)}
+                    onClick={() => onIncrement(id)}
                     className="w-6 h-6 flex items-center justify-center rounded-full bg-cream-dark text-espresso"
                   >
                     <Plus size={12} />
                   </button>
                 </div>
-                <button onClick={() => onRemove(menuItem.id)} className="text-brick/70 hover:text-brick">
+                <button onClick={() => onRemove(id)} className="text-brick/70 hover:text-brick">
                   <Trash2 size={15} />
                 </button>
               </div>
 
-              {openNoteFor === menuItem.id ? (
+              {openNoteFor === id ? (
                 <input
                   autoFocus
                   type="text"
                   value={note ?? ''}
-                  onChange={(e) => onNoteChange(menuItem.id, e.target.value)}
+                  onChange={(e) => onNoteChange(id, e.target.value)}
                   onBlur={() => setOpenNoteFor(null)}
                   placeholder="Catatan, mis. less ice, pedas..."
                   maxLength={80}
@@ -93,14 +99,14 @@ export default function Cart({
                 />
               ) : note ? (
                 <button
-                  onClick={() => setOpenNoteFor(menuItem.id)}
+                  onClick={() => setOpenNoteFor(id)}
                   className="text-xs text-espresso/60 italic text-left truncate max-w-full"
                 >
                   &ldquo;{note}&rdquo;
                 </button>
               ) : (
                 <button
-                  onClick={() => setOpenNoteFor(menuItem.id)}
+                  onClick={() => setOpenNoteFor(id)}
                   className="flex items-center gap-1 text-[11px] text-espresso/40 hover:text-espresso/70"
                 >
                   <MessageSquarePlus size={12} /> Tambah catatan

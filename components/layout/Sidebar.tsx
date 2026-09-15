@@ -3,12 +3,16 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ShoppingCart, BookUser, Receipt, UtensilsCrossed, BarChart3, Coffee, Settings, UserRound, LogOut, type LucideIcon } from 'lucide-react';
+import { ShoppingCart, BookUser, NotebookPen, Receipt, UtensilsCrossed, BarChart3, Coffee, Settings, UserRound, Users, LogOut, Wallet, type LucideIcon } from 'lucide-react';
 import { getAllKasbon } from '@/lib/storage/kasbonService';
+import { getAllPendingOrders } from '@/lib/storage/pendingOrderService';
 import { getDaysSinceLastBackup } from '@/lib/storage/backupService';
 import { getActiveOperator, clearActiveOperator } from '@/lib/storage/operatorService';
+import { useOperatorSession } from '@/lib/context/OperatorSessionContext';
 import { daysSince } from '@/lib/utils/date';
 import { KASBON_OVERDUE_DAYS, BACKUP_REMINDER_DAYS } from '@/lib/constants';
+import { formatRupiah } from '@/lib/utils/format';
+import type { ShiftEntry } from '@/lib/types';
 import ThemeToggle from '@/components/theme/ThemeToggle';
 
 interface NavItem {
@@ -20,16 +24,30 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/kasir', label: 'Kasir', icon: ShoppingCart },
+  { href: '/belum-bayar', label: 'Belum Bayar', shortLabel: 'Belum Bayar', icon: NotebookPen },
   { href: '/kasbon', label: 'Kasbon', icon: BookUser },
+  { href: '/pelanggan', label: 'Pelanggan', icon: Users },
   { href: '/pengeluaran', label: 'Pengeluaran', icon: Receipt },
   { href: '/menu', label: 'Menu & Stok', shortLabel: 'Menu', icon: UtensilsCrossed },
   { href: '/laporan', label: 'Laporan', icon: BarChart3 },
   { href: '/pengaturan', label: 'Pengaturan', icon: Settings },
 ];
 
-export default function Sidebar({ onLogout }: { onLogout?: () => void }) {
+export default function Sidebar({
+  onLogout,
+  activeShift,
+  onRequestCloseShift,
+}: {
+  onLogout?: () => void;
+  // Shift laci kas yang sedang berjalan (null kalau belum dibuka) —
+  // dikelola terpusat di AuthGate, lihat komentar di sana.
+  activeShift?: ShiftEntry | null;
+  onRequestCloseShift?: () => void;
+}) {
   const pathname = usePathname();
+  const session = useOperatorSession();
   const [kasbonOverdue, setKasbonOverdue] = useState(0);
+  const [pendingOrderCount, setPendingOrderCount] = useState(0);
   const [backupOverdue, setBackupOverdue] = useState(false);
   const [activeOperatorName, setActiveOperatorName] = useState<string | null>(null);
 
@@ -46,11 +64,14 @@ export default function Sidebar({ onLogout }: { onLogout?: () => void }) {
       ).length;
       setKasbonOverdue(count);
 
+      const pendingOrders = await getAllPendingOrders();
+      setPendingOrderCount(pendingOrders.length);
+
       const daysSinceBackup = await getDaysSinceLastBackup();
       setBackupOverdue(daysSinceBackup === null || daysSinceBackup >= BACKUP_REMINDER_DAYS);
 
-      const session = await getActiveOperator();
-      setActiveOperatorName(session?.operatorName ?? null);
+      const activeSession = await getActiveOperator();
+      setActiveOperatorName(activeSession?.operatorName ?? null);
     }
     checkOverdue();
     // Cek ulang setiap kali pindah halaman, supaya badge ikut update kalau
@@ -74,7 +95,12 @@ export default function Sidebar({ onLogout }: { onLogout?: () => void }) {
           <div className="flex items-center justify-between gap-2 -mt-4 -mb-2 text-[#FBF6EE]/70 text-xs">
             <span className="flex items-center gap-2 min-w-0">
               <UserRound size={13} className="shrink-0" />
-              <span className="truncate">Kasir jaga: <span className="font-medium text-[#FBF6EE]">{activeOperatorName}</span></span>
+              <span className="truncate">
+                Kasir jaga: <span className="font-medium text-[#FBF6EE]">{activeOperatorName}</span>{' '}
+                <span className="text-[#FBF6EE]/50">
+                  ({session.role === 'pemilik' ? 'Pemilik' : 'Kasir'})
+                </span>
+              </span>
             </span>
             <button
               onClick={handleLogout}
@@ -82,6 +108,23 @@ export default function Sidebar({ onLogout }: { onLogout?: () => void }) {
               title="Keluar / ganti kasir"
             >
               <LogOut size={13} />
+            </button>
+          </div>
+        )}
+
+        {activeShift && (
+          <div className="flex items-center justify-between gap-2 -mt-2 -mb-2 text-[#FBF6EE]/70 text-xs">
+            <span className="flex items-center gap-2 min-w-0">
+              <Wallet size={13} className="shrink-0" />
+              <span className="truncate">
+                Modal shift: <span className="font-medium text-[#FBF6EE]">{formatRupiah(activeShift.modalAwal)}</span>
+              </span>
+            </span>
+            <button
+              onClick={onRequestCloseShift}
+              className="shrink-0 text-[#C9A227] hover:text-[#FBF6EE] font-medium"
+            >
+              Tutup Shift
             </button>
           </div>
         )}
@@ -104,6 +147,11 @@ export default function Sidebar({ onLogout }: { onLogout?: () => void }) {
                 {href === '/kasbon' && kasbonOverdue > 0 && (
                   <span className="ml-auto flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-[#B3432B] text-[#FBF6EE] text-[10px] font-semibold">
                     {kasbonOverdue}
+                  </span>
+                )}
+                {href === '/belum-bayar' && pendingOrderCount > 0 && (
+                  <span className="ml-auto flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-[#C9A227] text-[#3C2415] text-[10px] font-semibold">
+                    {pendingOrderCount}
                   </span>
                 )}
                 {href === '/pengaturan' && backupOverdue && (
@@ -132,6 +180,11 @@ export default function Sidebar({ onLogout }: { onLogout?: () => void }) {
                 {href === '/kasbon' && kasbonOverdue > 0 && (
                   <span className="absolute -top-1 -right-1.5 flex items-center justify-center min-w-[14px] h-[14px] px-0.5 rounded-full bg-[#B3432B] text-[#FBF6EE] text-[9px] font-semibold">
                     {kasbonOverdue}
+                  </span>
+                )}
+                {href === '/belum-bayar' && pendingOrderCount > 0 && (
+                  <span className="absolute -top-1 -right-1.5 flex items-center justify-center min-w-[14px] h-[14px] px-0.5 rounded-full bg-[#C9A227] text-[#3C2415] text-[9px] font-semibold">
+                    {pendingOrderCount}
                   </span>
                 )}
                 {href === '/pengaturan' && backupOverdue && (

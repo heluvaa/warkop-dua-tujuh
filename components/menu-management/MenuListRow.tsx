@@ -3,6 +3,7 @@
 import type { MenuItem } from '@/lib/types';
 import { formatRupiah } from '@/lib/utils/format';
 import { LOW_STOCK_THRESHOLD } from '@/lib/constants';
+import { hasAnyVariantConfig } from '@/lib/utils/variant';
 import { Pencil, Trash2 } from 'lucide-react';
 
 export default function MenuListRow({
@@ -18,6 +19,7 @@ export default function MenuListRow({
   const hasHpp = !!item.hpp && item.hpp > 0;
   const margin = item.price - (item.hpp ?? 0);
   const marginPercent = item.price > 0 ? (margin / item.price) * 100 : 0;
+  const hasVariants = hasAnyVariantConfig(item.variants);
 
   return (
     <div className="flex items-center gap-3 bg-surface rounded-card p-3 border border-cream-dark">
@@ -30,7 +32,14 @@ export default function MenuListRow({
         )}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-espresso truncate">{item.name}</p>
+        <p className="font-medium text-espresso truncate">
+          {item.name}
+          {hasVariants && (
+            <span className="ml-1.5 text-[10px] font-normal text-sage bg-sage/10 px-1.5 py-0.5 rounded-full align-middle">
+              ada varian
+            </span>
+          )}
+        </p>
         <p className="text-xs text-espresso/50">
           {item.category} · {formatRupiah(item.price)}
         </p>

@@ -2,7 +2,7 @@ import { getItem, setItem, generateId, STORAGE_KEYS } from './db';
 import type { KasbonEntry } from '../types';
 import { createTransaction, updateTransaction, voidTransaction } from './transactionService';
 import { getSettings } from './settingsService';
-import { sendTelegramNotification } from '../telegram';
+import { sendNotification } from '../notify';
 import { daysSince } from '../utils/date';
 import { formatRupiah } from '../utils/format';
 import { KASBON_OVERDUE_DAYS } from '../constants';
@@ -26,7 +26,7 @@ export async function createKasbon(
   const settings = await getSettings();
   if (settings.kasbonCreatedNotifyEnabled) {
     const itemLines = newEntry.items.map((i) => `- ${i.name} x${i.quantity}`).join('\n');
-    await sendTelegramNotification(
+    await sendNotification(
       `🧾 <b>Kasbon Baru</b>\n${newEntry.customerName}\n${itemLines}\nTotal: ${formatRupiah(newEntry.total)}`
     );
   }
@@ -55,6 +55,7 @@ export async function updateKasbon(
         name: i.name,
         price: i.price,
         quantity: i.quantity,
+        variantLabel: i.variantLabel,
       }));
     }
     if (data.total !== undefined) {
@@ -88,7 +89,13 @@ export async function lunasiKasbon(id: string): Promise<void> {
   if (!entry) return;
 
   const trx = await createTransaction({
-    items: entry.items.map((i) => ({ menuItemId: '', name: i.name, price: i.price, quantity: i.quantity })),
+    items: entry.items.map((i) => ({
+      menuItemId: '',
+      name: i.name,
+      price: i.price,
+      quantity: i.quantity,
+      variantLabel: i.variantLabel,
+    })),
     total: entry.total,
     paymentMethod: 'cash',
     source: 'kasbon_lunas',
@@ -103,7 +110,7 @@ export async function lunasiKasbon(id: string): Promise<void> {
 
   const settings = await getSettings();
   if (settings.kasbonPaidNotifyEnabled) {
-    await sendTelegramNotification(
+    await sendNotification(
       `✅ <b>Kasbon Lunas</b>\n${entry.customerName} — ${formatRupiah(entry.total)}`
     );
   }
@@ -131,7 +138,7 @@ export async function checkOverdueKasbonNotifications(): Promise<void> {
 
   for (const entry of overdueNow) {
     if (!notified.includes(entry.id)) {
-      await sendTelegramNotification(
+      await sendNotification(
         `⏰ <b>Kasbon Jatuh Tempo</b>\n${entry.customerName} — ${formatRupiah(entry.total)} ` +
           `(belum lunas ${daysSince(entry.createdAt)} hari).`
       );

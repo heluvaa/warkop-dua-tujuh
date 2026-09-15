@@ -1,7 +1,7 @@
 import { getItem, setItem, generateId, STORAGE_KEYS } from './db';
 import type { PengeluaranEntry } from '../types';
 import { toDateKey, todayDateKey, toMonthKey } from '../utils/date';
-import { sendTelegramNotification } from '../telegram';
+import { sendNotification } from '../notify';
 import { getSettings } from './settingsService';
 import { formatRupiah } from '../utils/format';
 import { EXPENSE_NOTIFY_THRESHOLD } from '../constants';
@@ -26,7 +26,7 @@ export async function createPengeluaran(
   if (newEntry.amount >= EXPENSE_NOTIFY_THRESHOLD) {
     const settings = await getSettings();
     if (settings.expenseNotifyEnabled) {
-      await sendTelegramNotification(
+      await sendNotification(
         `💸 <b>Pengeluaran Besar</b>${newEntry.operatorName ? ` — ${newEntry.operatorName}` : ''}\n` +
           `${newEntry.name}: ${formatRupiah(newEntry.amount)}`
       );

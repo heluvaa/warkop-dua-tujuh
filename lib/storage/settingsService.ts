@@ -12,16 +12,43 @@ export interface AppSettings {
   kasbonCreatedNotifyEnabled: boolean;
   // Kasbon dilunasi pelanggan.
   kasbonPaidNotifyEnabled: boolean;
+  // Pesanan baru disimpan sebagai "Belum Bayar" dari Kasir.
+  pendingOrderNotifyEnabled: boolean;
   // Transaksi dibatalkan (void) — penanda keamanan/audit sederhana.
   voidNotifyEnabled: boolean;
   // Pengeluaran dengan nominal besar (>= EXPENSE_NOTIFY_THRESHOLD).
   expenseNotifyEnabled: boolean;
   // Kasir buka/tutup shift (pilih nama & PIN / "Ganti Kasir").
   shiftNotifyEnabled: boolean;
+  // Buka/tutup SHIFT LACI KAS (modal awal & hasil hitung selisih kas saat
+  // tutup) — beda dari shiftNotifyEnabled di atas yang untuk ganti kasir.
+  shiftCashNotifyEnabled: boolean;
   // Bot Telegram merespons perintah seperti /omzet, /stok, /kasbon — lihat
   // lib/telegramCommands.ts. Hanya aktif selama app kasir terbuka di
   // perangkat (lihat components/telegram/TelegramCommandListener.tsx).
   telegramCommandsEnabled: boolean;
+  // Payload QRIS statis milik warkop (hasil decode kode QR dari kertas
+  // cetakan resmi penyelenggara), disimpan pemilik lewat Pengaturan. Dipakai
+  // untuk menyuntik nominal transaksi secara otomatis (lihat lib/utils/qris.ts)
+  // supaya kode QR yang muncul di PaymentModal sudah terisi nominalnya —
+  // kasir tidak perlu ketik manual di aplikasi/EDC QRIS terpisah. Opsional:
+  // fitur ini nonaktif (fallback ke alur lama) kalau belum diisi.
+  qrisStaticCode?: string;
+  // Nama merchant hasil decode otomatis dari qrisStaticCode di atas —
+  // disimpan sekali saat validasi supaya bisa ditampilkan lagi di
+  // Pengaturan & PaymentModal tanpa perlu parsing ulang tiap kali.
+  qrisMerchantName?: string;
+  // Saklar UTAMA per channel — beda dari toggle per-jenis-event di atas.
+  // Toggle per-event menentukan JENIS kejadian apa saja yang boleh
+  // mengirim notifikasi; dua field ini menentukan lewat CHANNEL mana
+  // notifikasi itu diteruskan (lihat lib/notify.ts). Kalau kedua channel
+  // dinyalakan, satu kejadian akan mengirim ke Telegram DAN WhatsApp
+  // sekaligus.
+  telegramChannelEnabled: boolean;
+  // Default false — WhatsApp perlu provider (Fonnte/WhatsApp Cloud API)
+  // diisi dulu di .env.local (lihat app/api/whatsapp/route.ts) sebelum
+  // channel ini masuk akal dinyalakan.
+  whatsappChannelEnabled: boolean;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -30,10 +57,14 @@ const DEFAULT_SETTINGS: AppSettings = {
   transactionNotifyEnabled: true,
   kasbonCreatedNotifyEnabled: true,
   kasbonPaidNotifyEnabled: true,
+  pendingOrderNotifyEnabled: true,
   voidNotifyEnabled: true,
   expenseNotifyEnabled: true,
   shiftNotifyEnabled: true,
+  shiftCashNotifyEnabled: true,
   telegramCommandsEnabled: true,
+  telegramChannelEnabled: true,
+  whatsappChannelEnabled: false,
 };
 
 export async function getSettings(): Promise<AppSettings> {

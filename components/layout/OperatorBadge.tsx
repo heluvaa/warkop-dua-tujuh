@@ -1,7 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { UserRound, LogOut } from 'lucide-react';
+import { UserRound, LogOut, Wallet } from 'lucide-react';
+import type { ShiftEntry } from '@/lib/types';
+import { formatRupiah } from '@/lib/utils/format';
+import { useOperatorSession } from '@/lib/context/OperatorSessionContext';
 
 /**
  * Baris tipis di paling atas halaman (khusus HP — md:hidden) berisi nama
@@ -16,14 +19,36 @@ import { UserRound, LogOut } from 'lucide-react';
 export default function OperatorBadge({
   name,
   onLogout,
+  activeShift,
+  onRequestCloseShift,
 }: {
   name: string;
   onLogout: () => void;
+  // Shift laci kas yang sedang berjalan (null/undefined kalau belum
+  // dibuka) — dikelola terpusat di AuthGate, lihat komentar di sana.
+  activeShift?: ShiftEntry | null;
+  onRequestCloseShift?: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const session = useOperatorSession();
 
   return (
-    <div className="md:hidden flex items-center justify-end gap-2 px-3 py-1.5 bg-cream border-b border-cream-dark">
+    <div className="md:hidden flex items-center justify-between gap-2 px-3 py-1.5 bg-cream border-b border-cream-dark">
+      {activeShift ? (
+        <button
+          onClick={onRequestCloseShift}
+          className="flex items-center gap-1.5 text-xs text-espresso/70 min-w-0"
+          title="Tutup shift"
+        >
+          <Wallet size={13} className="shrink-0 text-caramel" />
+          <span className="truncate">
+            Modal: <span className="font-medium text-espresso">{formatRupiah(activeShift.modalAwal)}</span>
+          </span>
+        </button>
+      ) : (
+        <span />
+      )}
+
       {confirming ? (
         <div className="flex items-center gap-1.5 text-xs text-espresso/70">
           <span>Keluar?</span>
@@ -50,6 +75,9 @@ export default function OperatorBadge({
             <UserRound size={11} />
           </span>
           <span className="font-medium text-espresso max-w-[7rem] truncate">{name}</span>
+          <span className="text-espresso/40 text-[10px]">
+            ({session.role === 'pemilik' ? 'Pemilik' : 'Kasir'})
+          </span>
           <LogOut size={13} className="shrink-0" />
         </button>
       )}

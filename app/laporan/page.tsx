@@ -1,18 +1,20 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Download, Trash2, Send, TrendingUp, TrendingDown, Wallet, Loader2, CalendarDays, Flame, Ban, Search, X, LineChart, Users, Clock, CalendarRange, PiggyBank, Receipt, AlertTriangle } from 'lucide-react';
+import { Download, Trash2, Send, TrendingUp, TrendingDown, Wallet, Loader2, CalendarDays, Flame, Ban, Search, X, LineChart, Users, Clock, CalendarRange, PiggyBank, Receipt, AlertTriangle, Lock } from 'lucide-react';
 import type { Transaction, PengeluaranEntry, KasbonEntry } from '@/lib/types';
-import { getTransactionsByDate, clearTransactionsByDate, voidTransaction, getDailyTotals, getTransactionsByMonth } from '@/lib/storage/transactionService';
+import { useIsPemilik } from '@/lib/context/OperatorSessionContext';
+import { getTransactionsByDate, clearTransactionsByDate, voidTransaction, getDailyTotals, getTransactionsByMonth, getWeekComparison, getMonthComparison, getActiveTransactionsSince, getCashAmount, getQrisAmount, type WeekComparison, type MonthComparison } from '@/lib/storage/transactionService';
 import { getPengeluaranByDate, clearPengeluaranByDate, getPengeluaranByMonth } from '@/lib/storage/pengeluaranService';
 import { getAllKasbon } from '@/lib/storage/kasbonService';
 import { KASBON_OVERDUE_DAYS } from '@/lib/constants';
 import { incrementStock } from '@/lib/storage/menuService';
-import { formatRupiah, formatDateTime } from '@/lib/utils/format';
+import { formatRupiah, formatDateTime, formatTime, paymentMethodLabel, formatItemLabel } from '@/lib/utils/format';
 import { downloadCsv } from '@/lib/utils/exportCsv';
 import { todayDateKey, daysSince, currentMonthKey, toMonthKey } from '@/lib/utils/date';
 import SalesTrendChart, { type TrendBucket } from '@/components/laporan/SalesTrendChart';
 import MonthPicker from '@/components/laporan/MonthPicker';
+import ShiftHistorySection from '@/components/laporan/ShiftHistorySection';
 
 type SendState = 'idle' | 'sending' | 'success' | 'error';
 type TrendRange = 'week' | 'month';
@@ -22,7 +24,23 @@ type TrendRange = 'week' | 'month';
 // membuka input teks bebas untuk kasus yang tidak tercakup daftar ini.
 const VOID_REASONS = ['Salah input pesanan', 'Pelanggan batal', 'Salah kasir/bayar dobel', 'Lainnya'];
 
+// Label metode bayar untuk ekspor CSV — beda dari paymentMethodLabel biasa
+// karena untuk transaksi split, rinciannya (cash/QRIS/kasbon) sekalian
+// ditulis di kolom yang sama supaya tetap kebaca di satu baris CSV tanpa
+// perlu kolom tambahan.
+function csvMetodeLabel(t: Transaction): string {
+  if (t.paymentMethod === 'split' && t.splitDetail) {
+    const parts: string[] = [];
+    if (t.splitDetail.cash > 0) parts.push(`Cash ${t.splitDetail.cash}`);
+    if (t.splitDetail.qris > 0) parts.push(`QRIS ${t.splitDetail.qris}`);
+    if (t.splitDetail.kasbon > 0) parts.push(`Kasbon ${t.splitDetail.kasbon}`);
+    return `Split (${parts.join(' + ')})`;
+  }
+  return paymentMethodLabel(t.paymentMethod);
+}
+
 export default function LaporanPage() {
+  const isPemilik = useIsPemilik();
   const [selectedDate, setSelectedDate] = useState(todayDateKey());
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [pengeluaran, setPengeluaran] = useState<PengeluaranEntry[]>([]);
@@ -41,6 +59,10 @@ export default function LaporanPage() {
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey());
   const [monthTransactions, setMonthTransactions] = useState<Transaction[]>([]);
   const [monthPengeluaran, setMonthPengeluaran] = useState<PengeluaranEntry[]>([]);
+  const [weekComparison, setWeekComparison] = useState<WeekComparison | null>(null);
+  const [monthComparison, setMonthComparison] = useState<MonthComparison | null>(null);
+  const [patternDays, setPatternDays] = useState<7 | 30>(7);
+  const [patternTransactions, setPatternTransactions] = useState<Transaction[]>([]);
 
   const isToday = selectedDate === todayDateKey();
 
@@ -62,6 +84,19 @@ export default function LaporanPage() {
       setKasbonAll(await getAllKasbon());
     })();
   }, []);
+
+  useEffect(() => {
+    (async () => {
+      setWeekComparison(await getWeekComparison());
+      setMonthComparison(await getMonthComparison());
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      setPatternTransactions(await getActiveTransactionsSince(patternDays));
+    })();
+  }, [patternDays]);
 
   useEffect(() => {
     (async () => {
@@ -130,12 +165,8 @@ export default function LaporanPage() {
   // menu terlaris, tapi tetap tampil di tabel riwayat (dicoret) untuk audit.
   const activeTransactions = transactions.filter((t) => !t.voided);
 
-  const totalCash = activeTransactions
-    .filter((t) => t.paymentMethod === 'cash')
-    .reduce((sum, t) => sum + t.total, 0);
-  const totalQris = activeTransactions
-    .filter((t) => t.paymentMethod === 'qris')
-    .reduce((sum, t) => sum + t.total, 0);
+  const totalCash = activeTransactions.reduce((sum, t) => sum + getCashAmount(t), 0);
+  const totalQris = activeTransactions.reduce((sum, t) => sum + getQrisAmount(t), 0);
   const totalPemasukan = totalCash + totalQris;
   const totalPengeluaran = pengeluaran.reduce((sum, e) => sum + e.amount, 0);
   const labaBersih = totalPemasukan - totalPengeluaran;
@@ -196,25 +227,73 @@ export default function LaporanPage() {
   const labaKotor = omzetDenganHpp - totalModalTerjual;
   const labaKotorPercent = omzetDenganHpp > 0 ? (labaKotor / omzetDenganHpp) * 100 : 0;
 
-  // Ringkasan omzet per kasir (shift) pada tanggal terpilih — tidak
-  // termasuk transaksi yang di-void, sama seperti perhitungan total lainnya.
+  // Ringkasan omzet & void per kasir (shift) pada tanggal terpilih, untuk
+  // evaluasi kinerja kasir. Omzet/cash/qris HANYA dari transaksi aktif
+  // (tidak termasuk void), tapi voidCount/voidNominal justru diambil KHUSUS
+  // dari transaksi yang di-void milik kasir itu — supaya kasir yang sering
+  // membatalkan transaksi kelihatan di laporan meski omzet akhirnya tidak
+  // terpengaruh. jamMulai/jamAkhir diambil dari transaksi pertama & terakhir
+  // kasir itu pada tanggal ini (termasuk yang di-void), jadi kelihatan kira-
+  // kira jam berapa dia mulai & selesai jaga (bukan jam "buka/tutup shift"
+  // resmi, karena app ini belum punya pencatatan clock-in/clock-out — cuma
+  // perkiraan dari jejak transaksi).
   const perKasir = (() => {
     const map = new Map<
       string,
-      { name: string; count: number; cash: number; qris: number; total: number }
+      {
+        name: string;
+        count: number;
+        cash: number;
+        qris: number;
+        total: number;
+        jamMulai: string;
+        jamAkhir: string;
+        voidCount: number;
+        voidNominal: number;
+      }
     >();
-    for (const t of activeTransactions) {
+    for (const t of transactions) {
       const key = t.operatorName ?? 'Tanpa Kasir';
-      const existing = map.get(key) ?? { name: key, count: 0, cash: 0, qris: 0, total: 0 };
-      existing.count += 1;
-      if (t.paymentMethod === 'cash') existing.cash += t.total;
-      else existing.qris += t.total;
-      existing.total += t.total;
+      const existing = map.get(key) ?? {
+        name: key,
+        count: 0,
+        cash: 0,
+        qris: 0,
+        total: 0,
+        jamMulai: t.createdAt,
+        jamAkhir: t.createdAt,
+        voidCount: 0,
+        voidNominal: 0,
+      };
+      if (t.voided) {
+        existing.voidCount += 1;
+        existing.voidNominal += t.total;
+      } else {
+        existing.count += 1;
+        existing.cash += getCashAmount(t);
+        existing.qris += getQrisAmount(t);
+        existing.total += t.total;
+      }
+      if (t.createdAt < existing.jamMulai) existing.jamMulai = t.createdAt;
+      if (t.createdAt > existing.jamAkhir) existing.jamAkhir = t.createdAt;
       map.set(key, existing);
     }
+    // Urutkan berdasarkan omzet, tapi kasir yang HANYA punya void (tanpa
+    // transaksi aktif sama sekali) tetap muncul di bawah supaya tidak
+    // hilang dari laporan evaluasi.
     return [...map.values()].sort((a, b) => b.total - a.total);
   })();
   const maxKasirTotal = perKasir[0]?.total ?? 0;
+
+  // Perbandingan omzet minggu ini vs minggu lalu (7 hari terakhir vs 7 hari
+  // sebelumnya) — tidak terikat tanggal yang dipilih di atas, selalu
+  // menunjukkan tren terbaru begitu halaman dibuka.
+  const weekDeltaPercent =
+    weekComparison && weekComparison.lastWeek.total > 0
+      ? ((weekComparison.thisWeek.total - weekComparison.lastWeek.total) /
+          weekComparison.lastWeek.total) *
+        100
+      : null;
 
   // Statistik jam ramai — mengelompokkan transaksi (tidak termasuk void) pada
   // tanggal terpilih ke dalam blok 3 jam, supaya terlihat jam berapa warkop
@@ -237,15 +316,73 @@ export default function LaporanPage() {
   const jamRamaiIdx =
     maxJamCount > 0 ? jamBuckets.findIndex((b) => b.count === maxJamCount) : -1;
 
+  // Perbandingan omzet bulan ini vs bulan lalu (batas kalender, bukan
+  // rolling 30 hari) — dipakai untuk kartu "Perbandingan Bulanan".
+  const monthDeltaPercent =
+    monthComparison && monthComparison.lastMonth.total > 0
+      ? ((monthComparison.thisMonth.total - monthComparison.lastMonth.total) /
+          monthComparison.lastMonth.total) *
+        100
+      : null;
+
+  // --- Pola Penjualan (jam/hari/menu, rolling 7 atau 30 hari terakhir) ---
+  //
+  // Beda dari jamBuckets/menuTerlaris di atas yang cuma lihat SATU tanggal
+  // terpilih, bagian ini mengagregasi beberapa hari terakhir supaya pola
+  // yang muncul lebih bisa diandalkan untuk atur jadwal staf & waktu restock
+  // (satu hari ramai/sepi bisa kebetulan, pola seminggu/sebulan lebih jelas).
+  const patternJamBuckets = (() => {
+    const buckets = Array.from({ length: 8 }, (_, i) => ({
+      label: `${String(i * 3).padStart(2, '0')}–${String((i + 1) * 3).padStart(2, '0')}`,
+      count: 0,
+    }));
+    for (const t of patternTransactions) {
+      const hour = new Date(t.createdAt).getHours();
+      buckets[Math.min(Math.floor(hour / 3), 7)].count += 1;
+    }
+    return buckets;
+  })();
+  const maxPatternJamCount = Math.max(...patternJamBuckets.map((b) => b.count), 0);
+  const patternJamRamaiIdx =
+    maxPatternJamCount > 0
+      ? patternJamBuckets.findIndex((b) => b.count === maxPatternJamCount)
+      : -1;
+
+  // Urutan Senin -> Minggu (lebih akrab dipakai untuk jadwal kerja
+  // dibanding urutan Minggu -> Sabtu bawaan Date.getDay()).
+  const WEEKDAY_LABELS = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+  const patternHariBuckets = (() => {
+    const buckets = WEEKDAY_LABELS.map((label) => ({ label, count: 0, omzet: 0 }));
+    for (const t of patternTransactions) {
+      const jsDay = new Date(t.createdAt).getDay(); // 0 = Minggu ... 6 = Sabtu
+      const idx = jsDay === 0 ? 6 : jsDay - 1; // geser jadi 0 = Senin ... 6 = Minggu
+      buckets[idx].count += 1;
+      buckets[idx].omzet += t.total;
+    }
+    return buckets;
+  })();
+  const maxHariCount = Math.max(...patternHariBuckets.map((b) => b.count), 0);
+  const hariRamaiIdx = maxHariCount > 0 ? patternHariBuckets.findIndex((b) => b.count === maxHariCount) : -1;
+
+  const patternMenuTerlaris = (() => {
+    const map = new Map<string, { name: string; qty: number; omzet: number }>();
+    for (const t of patternTransactions) {
+      for (const item of t.items) {
+        const existing = map.get(item.name) ?? { name: item.name, qty: 0, omzet: 0 };
+        existing.qty += item.quantity;
+        existing.omzet += item.price * item.quantity;
+        map.set(item.name, existing);
+      }
+    }
+    return [...map.values()].sort((a, b) => b.qty - a.qty).slice(0, 5);
+  })();
+  const maxPatternMenuQty = patternMenuTerlaris[0]?.qty ?? 0;
+
   // Rekap Bulanan — agregasi terpisah dari tampilan harian di atas, memakai
   // bulan yang dipilih sendiri (default bulan berjalan).
   const monthActiveTx = monthTransactions.filter((t) => !t.voided);
-  const monthCash = monthActiveTx
-    .filter((t) => t.paymentMethod === 'cash')
-    .reduce((sum, t) => sum + t.total, 0);
-  const monthQris = monthActiveTx
-    .filter((t) => t.paymentMethod === 'qris')
-    .reduce((sum, t) => sum + t.total, 0);
+  const monthCash = monthActiveTx.reduce((sum, t) => sum + getCashAmount(t), 0);
+  const monthQris = monthActiveTx.reduce((sum, t) => sum + getQrisAmount(t), 0);
   const monthPemasukan = monthCash + monthQris;
   const monthPengeluaranTotal = monthPengeluaran.reduce((sum, e) => sum + e.amount, 0);
   const monthLaba = monthPemasukan - monthPengeluaranTotal;
@@ -266,6 +403,47 @@ export default function LaporanPage() {
     }
   }
   const monthLabaKotor = monthOmzetDenganHpp - monthModalTerjual;
+
+  // Laporan evaluasi per kasir untuk sebulan penuh (bukan cuma tanggal
+  // terpilih seperti perKasir di atas) — dipakai pemilik untuk melihat
+  // omzet & jumlah void tiap kasir dalam rentang waktu yang lebih
+  // representatif sebelum menilai kinerja. Logika hitungnya sama seperti
+  // perKasir harian: omzet/cash/qris cuma dari transaksi aktif, void
+  // dihitung terpisah dari transaksi yang dibatalkan.
+  const monthPerKasir = (() => {
+    const map = new Map<
+      string,
+      { name: string; count: number; total: number; voidCount: number; voidNominal: number }
+    >();
+    for (const t of monthTransactions) {
+      const key = t.operatorName ?? 'Tanpa Kasir';
+      const existing = map.get(key) ?? { name: key, count: 0, total: 0, voidCount: 0, voidNominal: 0 };
+      if (t.voided) {
+        existing.voidCount += 1;
+        existing.voidNominal += t.total;
+      } else {
+        existing.count += 1;
+        existing.total += t.total;
+      }
+      map.set(key, existing);
+    }
+    return [...map.values()].sort((a, b) => b.total - a.total);
+  })();
+  const maxMonthKasirTotal = monthPerKasir[0]?.total ?? 0;
+  const monthVoidCountTotal = monthPerKasir.reduce((sum, k) => sum + k.voidCount, 0);
+
+  function handleExportKasirCsv() {
+    if (!isPemilik) return;
+    const headers = ['Kasir', 'Jumlah Transaksi', 'Omzet', 'Jumlah Void', 'Nominal Void'];
+    const rows: (string | number)[][] = monthPerKasir.map((k) => [
+      k.name,
+      k.count,
+      k.total,
+      k.voidCount,
+      k.voidNominal,
+    ]);
+    downloadCsv(`evaluasi-kasir-warkop27-${selectedMonth}.csv`, headers, rows);
+  }
 
   // --- Laporan Kasbon --------------------------------------------------
   //
@@ -304,6 +482,7 @@ export default function LaporanPage() {
   const monthKasbonLunasTotal = monthKasbonLunas.reduce((sum, k) => sum + k.total, 0);
 
   function handleExportMonthCsv() {
+    if (!isPemilik) return;
     const headers = ['Tanggal', 'Tipe', 'Deskripsi', 'Metode/Kategori', 'Kasir', 'Pelanggan', 'Nominal'];
     const sortedMonthTx = [...monthActiveTx].sort(
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
@@ -315,8 +494,8 @@ export default function LaporanPage() {
       ...sortedMonthTx.map((t) => [
         formatDateTime(t.createdAt),
         'Penjualan',
-        t.items.map((i) => `${i.name} x${i.quantity}${i.note ? ` (${i.note})` : ''}`).join('; '),
-        t.paymentMethod === 'cash' ? 'Cash' : 'QRIS',
+        t.items.map((i) => `${formatItemLabel(i.name, i.variantLabel)} x${i.quantity}${i.note ? ` (${i.note})` : ''}`).join('; '),
+        csvMetodeLabel(t),
         t.operatorName ?? '-',
         t.customerName ?? '-',
         t.total,
@@ -350,14 +529,15 @@ export default function LaporanPage() {
   );
 
   function handleExportCsv() {
+    if (!isPemilik) return;
     const headers = ['Tanggal', 'Tipe', 'Deskripsi', 'Metode/Kategori', 'Kasir', 'Pelanggan', 'Nominal'];
     const activeSorted = sorted.filter((t) => !t.voided);
     const rows: (string | number)[][] = [
       ...activeSorted.map((t) => [
         formatDateTime(t.createdAt),
         'Penjualan',
-        t.items.map((i) => `${i.name} x${i.quantity}${i.note ? ` (${i.note})` : ''}`).join('; '),
-        t.paymentMethod === 'cash' ? 'Cash' : 'QRIS',
+        t.items.map((i) => `${formatItemLabel(i.name, i.variantLabel)} x${i.quantity}${i.note ? ` (${i.note})` : ''}`).join('; '),
+        csvMetodeLabel(t),
         t.operatorName ?? '-',
         t.customerName ?? '-',
         t.total,
@@ -382,6 +562,7 @@ export default function LaporanPage() {
   }
 
   async function handleClearData() {
+    if (!isPemilik) return;
     await clearTransactionsByDate(selectedDate);
     await clearPengeluaranByDate(selectedDate);
     setConfirmClear(false);
@@ -521,47 +702,305 @@ export default function LaporanPage() {
             <Wallet size={16} />
             <span className="text-xs font-medium">Laba Bersih</span>
           </div>
-          <p className="font-display font-semibold text-cream text-2xl">{formatRupiah(labaBersih)}</p>
+          {isPemilik ? (
+            <p className="font-display font-semibold text-cream text-2xl">{formatRupiah(labaBersih)}</p>
+          ) : (
+            <p className="flex items-center gap-1.5 text-cream/50 text-sm py-1">
+              <Lock size={14} /> Hanya pemilik yang bisa lihat
+            </p>
+          )}
         </div>
       </div>
 
       {/* Margin Produk (Laba Kotor) — beda dari Laba Bersih di atas: ini
           murni harga jual dikurangi modal (HPP) per menu yang terjual,
-          tanpa memperhitungkan pengeluaran operasional lain. */}
+          tanpa memperhitungkan pengeluaran operasional lain. Sama-sama data
+          profit sensitif, jadi digate ke pemilik juga. */}
+      {isPemilik && (
+        <section className="mb-6">
+          <h2 className="font-display font-semibold text-espresso mb-2 flex items-center gap-1.5">
+            <PiggyBank size={17} /> Margin Produk (HPP)
+          </h2>
+          {omzetDenganHpp === 0 ? (
+            <p className="text-sm text-espresso/50 text-center py-8 bg-surface rounded-card border border-cream-dark">
+              Belum ada penjualan dengan HPP tercatat pada tanggal ini. Isi HPP menu di halaman
+              Manajemen Menu supaya margin bisa dihitung.
+            </p>
+          ) : (
+            <div className="bg-surface rounded-card border border-cream-dark p-4">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <p className="text-xs text-espresso/50">Total Modal (HPP) Terjual</p>
+                  <p className="font-display font-semibold text-espresso text-lg">
+                    {formatRupiah(totalModalTerjual)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-espresso/50">Laba Kotor</p>
+                  <p className="font-display font-semibold text-sage text-lg">
+                    {formatRupiah(labaKotor)}{' '}
+                    <span className="text-xs font-sans font-normal text-espresso/50">
+                      ({labaKotorPercent.toFixed(0)}%)
+                    </span>
+                  </p>
+                </div>
+              </div>
+              {qtyTanpaHpp > 0 && (
+                <p className="text-[11px] text-espresso/40 mt-3 pt-3 border-t border-cream-dark">
+                  {qtyTanpaHpp} item terjual tanpa data HPP (biasanya dari kasbon lama) tidak
+                  ikut dihitung di atas.
+                </p>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Perbandingan Mingguan — omzet 7 hari terakhir vs 7 hari sebelumnya,
+          selalu berjalan (rolling window), tidak terikat tanggal yang
+          dipilih di atas. */}
       <section className="mb-6">
         <h2 className="font-display font-semibold text-espresso mb-2 flex items-center gap-1.5">
-          <PiggyBank size={17} /> Margin Produk (HPP)
+          <CalendarRange size={17} /> Perbandingan Mingguan
         </h2>
-        {omzetDenganHpp === 0 ? (
+        {!weekComparison ? (
           <p className="text-sm text-espresso/50 text-center py-8 bg-surface rounded-card border border-cream-dark">
-            Belum ada penjualan dengan HPP tercatat pada tanggal ini. Isi HPP menu di halaman
-            Manajemen Menu supaya margin bisa dihitung.
+            Memuat...
           </p>
         ) : (
           <div className="bg-surface rounded-card border border-cream-dark p-4">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
-                <p className="text-xs text-espresso/50">Total Modal (HPP) Terjual</p>
+                <p className="text-xs text-espresso/50 mb-1">Minggu Ini (7 hari terakhir)</p>
                 <p className="font-display font-semibold text-espresso text-lg">
-                  {formatRupiah(totalModalTerjual)}
+                  {formatRupiah(weekComparison.thisWeek.total)}
+                </p>
+                <p className="text-[11px] text-espresso/50 mt-0.5">
+                  {weekComparison.thisWeek.count} transaksi
                 </p>
               </div>
-              <div className="text-right">
-                <p className="text-xs text-espresso/50">Laba Kotor</p>
-                <p className="font-display font-semibold text-sage text-lg">
-                  {formatRupiah(labaKotor)}{' '}
-                  <span className="text-xs font-sans font-normal text-espresso/50">
-                    ({labaKotorPercent.toFixed(0)}%)
-                  </span>
+              <div>
+                <p className="text-xs text-espresso/50 mb-1">Minggu Lalu (7 hari sebelumnya)</p>
+                <p className="font-display font-semibold text-espresso/70 text-lg">
+                  {formatRupiah(weekComparison.lastWeek.total)}
+                </p>
+                <p className="text-[11px] text-espresso/50 mt-0.5">
+                  {weekComparison.lastWeek.count} transaksi
                 </p>
               </div>
             </div>
-            {qtyTanpaHpp > 0 && (
-              <p className="text-[11px] text-espresso/40 mt-3 pt-3 border-t border-cream-dark">
-                {qtyTanpaHpp} item terjual tanpa data HPP (biasanya dari kasbon lama) tidak
-                ikut dihitung di atas.
+            {weekDeltaPercent !== null ? (
+              <div
+                className={`flex items-center gap-1.5 text-sm font-medium ${
+                  weekDeltaPercent >= 0 ? 'text-sage' : 'text-brick'
+                }`}
+              >
+                {weekDeltaPercent >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+                {weekDeltaPercent >= 0 ? 'Naik' : 'Turun'} {Math.abs(weekDeltaPercent).toFixed(1)}%
+                <span className="text-espresso/40 font-normal">dari minggu lalu</span>
+              </div>
+            ) : (
+              <p className="text-xs text-espresso/40">
+                Belum ada omzet minggu lalu untuk dibandingkan.
               </p>
             )}
+          </div>
+        )}
+      </section>
+
+      {/* Perbandingan Bulanan — omzet bulan kalender berjalan vs bulan
+          kalender sebelumnya (beda dari Perbandingan Mingguan yang rolling
+          7 hari), supaya sejalan dengan batas "Rekap Bulanan" di bawah. */}
+      <section className="mb-6">
+        <h2 className="font-display font-semibold text-espresso mb-2 flex items-center gap-1.5">
+          <CalendarDays size={17} /> Perbandingan Bulanan
+        </h2>
+        {!monthComparison ? (
+          <p className="text-sm text-espresso/50 text-center py-8 bg-surface rounded-card border border-cream-dark">
+            Memuat...
+          </p>
+        ) : (
+          <div className="bg-surface rounded-card border border-cream-dark p-4">
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <p className="text-xs text-espresso/50 mb-1 capitalize">
+                  {new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' }).format(
+                    new Date(`${monthComparison.thisMonth.monthKey}-01T00:00:00`)
+                  )}
+                </p>
+                <p className="font-display font-semibold text-espresso text-lg">
+                  {formatRupiah(monthComparison.thisMonth.total)}
+                </p>
+                <p className="text-[11px] text-espresso/50 mt-0.5">
+                  {monthComparison.thisMonth.count} transaksi
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-espresso/50 mb-1 capitalize">
+                  {new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' }).format(
+                    new Date(`${monthComparison.lastMonth.monthKey}-01T00:00:00`)
+                  )}
+                </p>
+                <p className="font-display font-semibold text-espresso/70 text-lg">
+                  {formatRupiah(monthComparison.lastMonth.total)}
+                </p>
+                <p className="text-[11px] text-espresso/50 mt-0.5">
+                  {monthComparison.lastMonth.count} transaksi
+                </p>
+              </div>
+            </div>
+            {monthDeltaPercent !== null ? (
+              <div
+                className={`flex items-center gap-1.5 text-sm font-medium ${
+                  monthDeltaPercent >= 0 ? 'text-sage' : 'text-brick'
+                }`}
+              >
+                {monthDeltaPercent >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+                {monthDeltaPercent >= 0 ? 'Naik' : 'Turun'} {Math.abs(monthDeltaPercent).toFixed(1)}%
+                <span className="text-espresso/40 font-normal">dari bulan lalu</span>
+              </div>
+            ) : (
+              <p className="text-xs text-espresso/40">
+                Belum ada omzet bulan lalu untuk dibandingkan.
+              </p>
+            )}
+            <p className="text-[11px] text-espresso/40 mt-2 pt-2 border-t border-cream-dark">
+              Dihitung per tanggal 1 bulan kalender — kalau baru masuk awal bulan, wajar
+              angka "bulan ini" masih kecil karena belum genap sebulan.
+            </p>
+          </div>
+        )}
+      </section>
+
+      {/* Pola Penjualan — jam, hari, & menu terlaris yang diagregasi dari
+          beberapa hari terakhir (bukan cuma satu tanggal), supaya polanya
+          lebih bisa diandalkan untuk atur jadwal staf & waktu restock. */}
+      <section className="mb-6">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="font-display font-semibold text-espresso flex items-center gap-1.5">
+            <Flame size={17} /> Pola Penjualan
+          </h2>
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => setPatternDays(7)}
+              className={`px-3 py-1 rounded-full text-xs border ${
+                patternDays === 7
+                  ? 'bg-espresso text-cream border-espresso'
+                  : 'bg-surface text-espresso/70 border-cream-dark'
+              }`}
+            >
+              7 Hari
+            </button>
+            <button
+              onClick={() => setPatternDays(30)}
+              className={`px-3 py-1 rounded-full text-xs border ${
+                patternDays === 30
+                  ? 'bg-espresso text-cream border-espresso'
+                  : 'bg-surface text-espresso/70 border-cream-dark'
+              }`}
+            >
+              30 Hari
+            </button>
+          </div>
+        </div>
+        <p className="text-xs text-espresso/50 mb-3">
+          Dipakai untuk lihat jam & hari mana yang konsisten ramai — cocok buat atur jadwal
+          staf & waktu restock, bukan cuma sibuk-tidaknya satu hari saja.
+        </p>
+
+        {patternTransactions.length === 0 ? (
+          <p className="text-sm text-espresso/50 text-center py-8 bg-surface rounded-card border border-cream-dark">
+            Belum ada penjualan pada {patternDays} hari terakhir.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {/* Jam Ramai (agregat) */}
+            <div className="bg-surface rounded-card border border-cream-dark p-4">
+              <h3 className="text-xs font-medium text-espresso/60 mb-3 flex items-center gap-1.5">
+                <Clock size={14} /> Jam Ramai
+              </h3>
+              <div className="space-y-3">
+                {patternJamBuckets.map((b, idx) => (
+                  <div key={b.label} className="flex items-center gap-3">
+                    <span className="text-xs text-espresso/50 w-14 shrink-0 whitespace-nowrap">
+                      {b.label}
+                    </span>
+                    <div className="flex-1 h-1.5 bg-cream-dark rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${
+                          idx === patternJamRamaiIdx ? 'bg-caramel' : 'bg-crema'
+                        }`}
+                        style={{
+                          width: `${maxPatternJamCount > 0 ? (b.count / maxPatternJamCount) * 100 : 0}%`,
+                        }}
+                      />
+                    </div>
+                    <span className="text-xs text-espresso/60 w-8 text-right shrink-0">{b.count}x</span>
+                    {idx === patternJamRamaiIdx && <Flame size={13} className="text-caramel shrink-0" />}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Hari Ramai (agregat) */}
+            <div className="bg-surface rounded-card border border-cream-dark p-4">
+              <h3 className="text-xs font-medium text-espresso/60 mb-3 flex items-center gap-1.5">
+                <CalendarDays size={14} /> Hari Ramai
+              </h3>
+              <div className="space-y-3">
+                {patternHariBuckets.map((b, idx) => (
+                  <div key={b.label} className="flex items-center gap-3">
+                    <span className="text-xs text-espresso/50 w-14 shrink-0 whitespace-nowrap">
+                      {b.label}
+                    </span>
+                    <div className="flex-1 h-1.5 bg-cream-dark rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${idx === hariRamaiIdx ? 'bg-caramel' : 'bg-crema'}`}
+                        style={{ width: `${maxHariCount > 0 ? (b.count / maxHariCount) * 100 : 0}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-espresso/60 w-8 text-right shrink-0">{b.count}x</span>
+                    {idx === hariRamaiIdx && <Flame size={13} className="text-caramel shrink-0" />}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Menu Terlaris (agregat) */}
+            <div className="bg-surface rounded-card border border-cream-dark p-4">
+              <h3 className="text-xs font-medium text-espresso/60 mb-3">
+                Menu Terlaris ({patternDays} Hari)
+              </h3>
+              <div className="space-y-3">
+                {patternMenuTerlaris.map((item, idx) => (
+                  <div key={item.name} className="flex items-center gap-3">
+                    <div
+                      className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold shrink-0 ${
+                        idx === 0 ? 'bg-crema text-espresso' : 'bg-cream-dark text-espresso/60'
+                      }`}
+                    >
+                      {idx === 0 ? <Flame size={13} /> : idx + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-sm text-espresso font-medium truncate">{item.name}</span>
+                        <span className="text-xs text-espresso/50 whitespace-nowrap">
+                          {item.qty} terjual · {formatRupiah(item.omzet)}
+                        </span>
+                      </div>
+                      <div className="h-1.5 bg-cream-dark rounded-full mt-1.5 overflow-hidden">
+                        <div
+                          className="h-full bg-caramel rounded-full"
+                          style={{
+                            width: `${maxPatternMenuQty > 0 ? (item.qty / maxPatternMenuQty) * 100 : 0}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </section>
@@ -666,7 +1105,11 @@ export default function LaporanPage() {
                     />
                   </div>
                   <p className="text-[11px] mt-1">
-                    {item.hppUnknown && item.modal === 0 ? (
+                    {!isPemilik ? (
+                      <span className="flex items-center gap-1 text-espresso/30">
+                        <Lock size={10} /> Untung: hanya pemilik
+                      </span>
+                    ) : item.hppUnknown && item.modal === 0 ? (
                       <span className="text-espresso/30">HPP belum diisi</span>
                     ) : (
                       <span className={item.omzet - item.modal < 0 ? 'text-brick' : 'text-sage'}>
@@ -714,6 +1157,17 @@ export default function LaporanPage() {
                 <p className="text-[11px] text-espresso/40 mt-1">
                   Cash {formatRupiah(k.cash)} · QRIS {formatRupiah(k.qris)}
                 </p>
+                <p className="text-[11px] text-espresso/40 mt-0.5 flex items-center gap-1">
+                  <Clock size={11} className="shrink-0" />
+                  Jaga {formatTime(new Date(k.jamMulai))}
+                  {k.jamMulai !== k.jamAkhir ? `–${formatTime(new Date(k.jamAkhir))}` : ''}
+                </p>
+                <p className={`text-[11px] mt-0.5 flex items-center gap-1 ${k.voidCount > 0 ? 'text-brick' : 'text-espresso/30'}`}>
+                  <Ban size={11} className="shrink-0" />
+                  {k.voidCount > 0
+                    ? `${k.voidCount} void · ${formatRupiah(k.voidNominal)}`
+                    : 'Tidak ada void'}
+                </p>
               </button>
             ))}
           </div>
@@ -722,18 +1176,22 @@ export default function LaporanPage() {
 
       {/* Aksi */}
       <div className="flex flex-wrap gap-2 mb-2">
-        <button
-          onClick={handleExportCsv}
-          className="flex items-center gap-1.5 bg-surface border border-cream-dark text-espresso rounded-card px-3.5 py-2 text-sm font-medium"
-        >
-          <Download size={16} /> Export CSV
-        </button>
-        <button
-          onClick={() => setConfirmClear(true)}
-          className="flex items-center gap-1.5 bg-surface border border-cream-dark text-brick rounded-card px-3.5 py-2 text-sm font-medium"
-        >
-          <Trash2 size={16} /> Clear Data Tanggal Ini
-        </button>
+        {isPemilik && (
+          <button
+            onClick={handleExportCsv}
+            className="flex items-center gap-1.5 bg-surface border border-cream-dark text-espresso rounded-card px-3.5 py-2 text-sm font-medium"
+          >
+            <Download size={16} /> Export CSV
+          </button>
+        )}
+        {isPemilik && (
+          <button
+            onClick={() => setConfirmClear(true)}
+            className="flex items-center gap-1.5 bg-surface border border-cream-dark text-brick rounded-card px-3.5 py-2 text-sm font-medium"
+          >
+            <Trash2 size={16} /> Clear Data Tanggal Ini
+          </button>
+        )}
         <button
           onClick={handleKirimLaporan}
           disabled={sendState === 'sending' || !isToday}
@@ -830,22 +1288,35 @@ export default function LaporanPage() {
                   <div className="flex items-start justify-between gap-2">
                     <span className="text-xs text-espresso/50">{formatDateTime(t.createdAt)}</span>
                     <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-cream-dark text-espresso/70 shrink-0">
-                      {t.paymentMethod === 'cash' ? 'Cash' : 'QRIS'}
+                      {paymentMethodLabel(t.paymentMethod)}
                     </span>
                   </div>
                   <p className={`text-sm text-espresso leading-snug ${t.voided ? 'line-through' : ''}`}>
                     {t.items
-                      .map((i) => `${i.name} x${i.quantity}${i.note ? ` (${i.note})` : ''}`)
+                      .map((i) => `${formatItemLabel(i.name, i.variantLabel)} x${i.quantity}${i.note ? ` (${i.note})` : ''}`)
                       .join(', ')}
                   </p>
+                  {t.paymentMethod === 'split' && t.splitDetail && (
+                    <p className="text-xs text-espresso/50">
+                      Cash {formatRupiah(t.splitDetail.cash)} · QRIS {formatRupiah(t.splitDetail.qris)}
+                      {t.splitDetail.kasbon > 0 && (
+                        <span className="text-brick"> · Kasbon {formatRupiah(t.splitDetail.kasbon)}</span>
+                      )}
+                    </p>
+                  )}
                   {t.customerName && (
                     <p className="text-xs text-espresso/50">Atas nama: {t.customerName}</p>
                   )}
-                  {(t.source === 'kasbon_lunas' || t.voided) && (
+                  {(t.source === 'kasbon_lunas' || t.source === 'pending_paid' || t.voided) && (
                     <div className="flex gap-1.5 flex-wrap">
                       {t.source === 'kasbon_lunas' && (
                         <span className="text-[10px] text-crema/90 bg-espresso/5 px-1.5 py-0.5 rounded">
                           kasbon lunas
+                        </span>
+                      )}
+                      {t.source === 'pending_paid' && (
+                        <span className="text-[10px] text-crema/90 bg-espresso/5 px-1.5 py-0.5 rounded">
+                          dari belum bayar
                         </span>
                       )}
                       {t.voided && (
@@ -898,7 +1369,7 @@ export default function LaporanPage() {
                       <td className="px-3 py-2.5 text-espresso/70 whitespace-nowrap">{formatDateTime(t.createdAt)}</td>
                       <td className={`px-3 py-2.5 text-espresso min-w-[200px] whitespace-normal break-words ${t.voided ? 'line-through' : ''}`}>
                         {t.items
-                          .map((i) => `${i.name} x${i.quantity}${i.note ? ` (${i.note})` : ''}`)
+                          .map((i) => `${formatItemLabel(i.name, i.variantLabel)} x${i.quantity}${i.note ? ` (${i.note})` : ''}`)
                           .join(', ')}
                         {t.customerName && (
                           <span className="block text-xs text-espresso/50 not-italic">
@@ -910,13 +1381,28 @@ export default function LaporanPage() {
                             kasbon lunas
                           </span>
                         )}
+                        {t.source === 'pending_paid' && (
+                          <span className="ml-1.5 text-[10px] text-crema/90 bg-espresso/5 px-1.5 py-0.5 rounded whitespace-nowrap">
+                            dari belum bayar
+                          </span>
+                        )}
                         {t.voided && (
                           <span className="ml-1.5 text-[10px] text-brick bg-brick/10 px-1.5 py-0.5 rounded whitespace-nowrap">
                             dibatalkan{t.voidReason ? ` · ${t.voidReason}` : ''}
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-espresso/70 whitespace-nowrap">{t.paymentMethod === 'cash' ? 'Cash' : 'QRIS'}</td>
+                      <td className="px-3 py-2.5 text-espresso/70 whitespace-nowrap">
+                        {paymentMethodLabel(t.paymentMethod)}
+                        {t.paymentMethod === 'split' && t.splitDetail && (
+                          <span className="block text-[10px] text-espresso/50 whitespace-normal">
+                            Cash {formatRupiah(t.splitDetail.cash)} · QRIS {formatRupiah(t.splitDetail.qris)}
+                            {t.splitDetail.kasbon > 0 && (
+                              <span className="text-brick"> · Kasbon {formatRupiah(t.splitDetail.kasbon)}</span>
+                            )}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2.5 text-espresso/70 whitespace-nowrap">{t.operatorName ?? '-'}</td>
                       <td className={`px-3 py-2.5 text-right font-medium text-espresso whitespace-nowrap ${t.voided ? 'line-through' : ''}`}>
                         {formatRupiah(t.total)}
@@ -948,7 +1434,7 @@ export default function LaporanPage() {
             <div>
               <p className="text-espresso font-medium mb-1">Batalkan transaksi ini?</p>
               <p className="text-sm text-espresso/60">
-                {voidTarget.items.map((i) => `${i.name} x${i.quantity}`).join(', ')} —{' '}
+                {voidTarget.items.map((i) => `${formatItemLabel(i.name, i.variantLabel)} x${i.quantity}`).join(', ')} —{' '}
                 {formatRupiah(voidTarget.total)}. Transaksi akan dikeluarkan dari total laporan
                 dan stok menu terkait akan dikembalikan. Tindakan ini tidak bisa dibatalkan.
               </p>
@@ -1126,8 +1612,16 @@ export default function LaporanPage() {
               <Wallet size={16} />
               <span className="text-xs font-medium">Laba Bersih Bulan Ini</span>
             </div>
-            <p className="font-display font-semibold text-cream text-2xl">{formatRupiah(monthLaba)}</p>
-            <p className="text-[11px] text-cream/60 mt-0.5">{monthActiveTx.length} transaksi</p>
+            {isPemilik ? (
+              <>
+                <p className="font-display font-semibold text-cream text-2xl">{formatRupiah(monthLaba)}</p>
+                <p className="text-[11px] text-cream/60 mt-0.5">{monthActiveTx.length} transaksi</p>
+              </>
+            ) : (
+              <p className="flex items-center gap-1.5 text-cream/50 text-sm py-1">
+                <Lock size={14} /> Hanya pemilik yang bisa lihat
+              </p>
+            )}
           </div>
         </div>
 
@@ -1163,15 +1657,76 @@ export default function LaporanPage() {
           <p className="text-sm text-espresso/50 text-center py-6 bg-surface rounded-card border border-cream-dark">
             Belum ada transaksi pada bulan ini.
           </p>
-        ) : (
+        ) : isPemilik ? (
           <button
             onClick={handleExportMonthCsv}
             className="flex items-center gap-1.5 bg-surface border border-cream-dark text-espresso rounded-card px-3.5 py-2 text-sm font-medium"
           >
             <Download size={16} /> Export CSV Bulan Ini
           </button>
-        )}
+        ) : null}
       </section>
+
+      {/* Evaluasi per Kasir (Bulanan) — omzet & jumlah void tiap kasir
+          sebulan penuh, untuk bahan evaluasi kinerja. Hanya pemilik yang
+          bisa lihat, sama seperti Laba Bersih & Margin Produk. */}
+      {isPemilik && (
+        <section className="mb-6">
+          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+            <h2 className="font-display font-semibold text-espresso flex items-center gap-1.5">
+              <Users size={17} /> Evaluasi per Kasir
+            </h2>
+            {monthPerKasir.length > 0 && (
+              <button
+                onClick={handleExportKasirCsv}
+                className="flex items-center gap-1.5 bg-surface border border-cream-dark text-espresso rounded-card px-3 py-1.5 text-xs font-medium"
+              >
+                <Download size={14} /> Export CSV
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-espresso/50 mb-3 capitalize">
+            {monthLabel}
+            {monthVoidCountTotal > 0 ? ` · ${monthVoidCountTotal} void total` : ''}
+          </p>
+          {monthPerKasir.length === 0 ? (
+            <p className="text-sm text-espresso/50 text-center py-6 bg-surface rounded-card border border-cream-dark">
+              Belum ada transaksi pada bulan ini.
+            </p>
+          ) : (
+            <div className="bg-surface rounded-card border border-cream-dark p-4 space-y-3">
+              {monthPerKasir.map((k) => (
+                <div key={k.name}>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-sm text-espresso font-medium truncate">{k.name}</span>
+                    <span className="text-xs text-espresso/50 whitespace-nowrap">
+                      {k.count} transaksi · {formatRupiah(k.total)}
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-cream-dark rounded-full mt-1.5 overflow-hidden">
+                    <div
+                      className="h-full bg-sage rounded-full"
+                      style={{ width: `${maxMonthKasirTotal > 0 ? (k.total / maxMonthKasirTotal) * 100 : 0}%` }}
+                    />
+                  </div>
+                  <p className={`text-[11px] mt-1 flex items-center gap-1 ${k.voidCount > 0 ? 'text-brick' : 'text-espresso/30'}`}>
+                    <Ban size={11} className="shrink-0" />
+                    {k.voidCount > 0
+                      ? `${k.voidCount} void · ${formatRupiah(k.voidNominal)}${
+                          k.count + k.voidCount > 0
+                            ? ` (${((k.voidCount / (k.count + k.voidCount)) * 100).toFixed(0)}% dari transaksinya)`
+                            : ''
+                        }`
+                      : 'Tidak ada void'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      <ShiftHistorySection />
 
       {confirmClear && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">

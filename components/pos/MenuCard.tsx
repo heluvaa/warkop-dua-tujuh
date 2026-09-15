@@ -3,6 +3,7 @@
 import type { MenuItem } from '@/lib/types';
 import { formatRupiah } from '@/lib/utils/format';
 import { LOW_STOCK_THRESHOLD } from '@/lib/constants';
+import { hasAnyVariantConfig } from '@/lib/utils/variant';
 import { Plus, Star } from 'lucide-react';
 
 export default function MenuCard({
@@ -16,6 +17,7 @@ export default function MenuCard({
 }) {
   const outOfStock = item.stock <= 0;
   const lowStock = !outOfStock && item.stock <= LOW_STOCK_THRESHOLD;
+  const hasVariants = hasAnyVariantConfig(item.variants);
 
   return (
     <div
@@ -61,9 +63,15 @@ export default function MenuCard({
           />
         </div>
       </div>
-      <p className="text-xs text-espresso/60 mt-1">{item.category}</p>
+      <p className="text-xs text-espresso/60 mt-1">
+        {item.category}
+        {hasVariants && <span className="text-crema/90"> · ada varian</span>}
+      </p>
       <div className="flex items-center justify-between mt-3">
-        <span className="font-semibold text-espresso">{formatRupiah(item.price)}</span>
+        <span className="font-semibold text-espresso">
+          {hasVariants && <span className="font-normal text-espresso/50 text-xs">mulai </span>}
+          {formatRupiah(item.price)}
+        </span>
         <span
           className={`flex items-center justify-center w-7 h-7 rounded-full ${
             outOfStock ? 'bg-gray-200 text-gray-400 dark:bg-espresso-light/20 dark:text-espresso/30' : 'bg-espresso text-cream'

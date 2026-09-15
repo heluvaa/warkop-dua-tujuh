@@ -57,7 +57,7 @@ export default function MenuManagementPage() {
     })();
   }, []);
 
-  async function handleSave(data: { name: string; price: number; hpp: number; category: string; stock: number; imageUrl?: string }) {
+  async function handleSave(data: { name: string; price: number; hpp: number; category: string; stock: number; imageUrl?: string; variants?: MenuItem['variants'] }) {
     if (editing) {
       await updateMenuItem(editing.id, data);
     } else {

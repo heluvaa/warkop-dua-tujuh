@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import type { Operator } from '@/lib/types';
+import type { Operator, OperatorRole } from '@/lib/types';
+import { getOperatorRole } from '@/lib/storage/operatorService';
 
 export default function OperatorFormModal({
   initial,
@@ -11,16 +12,17 @@ export default function OperatorFormModal({
 }: {
   initial?: Operator | null;
   onClose: () => void;
-  onSave: (data: { name: string; pin: string }) => void;
+  onSave: (data: { name: string; pin: string; role: OperatorRole }) => void;
 }) {
   const [name, setName] = useState(initial?.name ?? '');
   const [pin, setPin] = useState(initial?.pin ?? '');
+  const [role, setRole] = useState<OperatorRole>(initial ? getOperatorRole(initial) : 'kasir');
 
   const isValid = name.trim().length > 0 && /^\d{4}$/.test(pin);
 
   function handleSubmit() {
     if (!isValid) return;
-    onSave({ name: name.trim(), pin });
+    onSave({ name: name.trim(), pin, role });
   }
 
   return (
@@ -56,6 +58,38 @@ export default function OperatorFormModal({
             />
             <p className="text-[11px] text-espresso/50 mt-1">
               PIN cuma buat identifikasi shift, bukan keamanan data — pakai angka yang gampang diingat.
+            </p>
+          </div>
+          <div>
+            <label className="text-xs text-espresso/60">Peran</label>
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              <button
+                type="button"
+                onClick={() => setRole('kasir')}
+                className={`rounded-card px-3 py-2.5 text-sm font-medium border ${
+                  role === 'kasir'
+                    ? 'bg-espresso text-cream border-espresso'
+                    : 'bg-surface text-espresso border-cream-dark'
+                }`}
+              >
+                Kasir
+              </button>
+              <button
+                type="button"
+                onClick={() => setRole('pemilik')}
+                className={`rounded-card px-3 py-2.5 text-sm font-medium border ${
+                  role === 'pemilik'
+                    ? 'bg-espresso text-cream border-espresso'
+                    : 'bg-surface text-espresso border-cream-dark'
+                }`}
+              >
+                Pemilik
+              </button>
+            </div>
+            <p className="text-[11px] text-espresso/50 mt-1">
+              Pemilik bisa lihat Laba Bersih & Margin Produk di Laporan, dan bisa hapus data (Clear
+              Data laporan, kelola akun kasir, pulihkan backup). Kasir cuma akses operasional
+              harian.
             </p>
           </div>
         </div>

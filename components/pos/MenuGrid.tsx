@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, X, EyeOff, Eye } from 'lucide-react';
 import type { MenuItem } from '@/lib/types';
 import MenuCard from './MenuCard';
 
@@ -16,6 +16,12 @@ export default function MenuGrid({
 }) {
   const [category, setCategory] = useState<string>('Semua');
   const [query, setQuery] = useState('');
+  // Menu yang stoknya 0 disembunyikan dari grid secara default (bukan
+  // dihapus datanya, cuma disaring dari tampilan) supaya kasir tidak perlu
+  // menggeser-geser lewat menu yang memang tidak bisa dijual dulu. Kalau
+  // perlu dicek/diaktifkan lagi (mis. mau lihat urutan menu lengkap), bisa
+  // ditampilkan sementara lewat toggle di bawah.
+  const [showOutOfStock, setShowOutOfStock] = useState(false);
 
   const categories = useMemo(
     () => ['Semua', ...Array.from(new Set(menu.map((m) => m.category)))],
@@ -31,8 +37,11 @@ export default function MenuGrid({
       )
     : byCategory;
 
+  const outOfStockCount = filtered.filter((m) => m.stock <= 0).length;
+  const visible = showOutOfStock ? filtered : filtered.filter((m) => m.stock > 0);
+
   // Pin menu favorit ke bagian paling atas grid (urutan lain tetap terjaga).
-  const sorted = [...filtered].sort(
+  const sorted = [...visible].sort(
     (a, b) => Number(!!b.isFavorite) - Number(!!a.isFavorite)
   );
 
@@ -77,7 +86,19 @@ export default function MenuGrid({
         ))}
       </div>
 
-      {filtered.length === 0 ? (
+      {outOfStockCount > 0 && (
+        <button
+          onClick={() => setShowOutOfStock((v) => !v)}
+          className="flex items-center gap-1.5 text-xs text-espresso/50 mb-3"
+        >
+          {showOutOfStock ? <EyeOff size={13} /> : <Eye size={13} />}
+          {showOutOfStock
+            ? 'Sembunyikan menu stok habis'
+            : `${outOfStockCount} menu stok habis disembunyikan · Tampilkan`}
+        </button>
+      )}
+
+      {sorted.length === 0 ? (
         <p className="text-sm text-espresso/50 py-10 text-center">
           {q ? `Tidak ada menu yang cocok dengan "${query}".` : 'Belum ada menu di kategori ini.'}
         </p>

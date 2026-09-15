@@ -110,6 +110,10 @@ export const STORAGE_KEYS = {
   MENU: 'warkop27_menu',
   TRANSACTIONS: 'warkop27_transactions',
   KASBON: 'warkop27_kasbon',
+  // Pesanan yang sudah masuk (item & stok terpotong) tapi belum dibayar
+  // saat itu juga — dari sini nanti ditandai "Sudah Dibayar" (jadi
+  // Transaction) atau dipindah jadi "Kasbon" kalau tidak dibayar sama sekali.
+  PENDING_ORDERS: 'warkop27_pending_orders',
   PENGELUARAN: 'warkop27_pengeluaran',
   // Riwayat belanja stok (restock) — terpisah dari PENGELUARAN karena punya
   // rincian item/qty/harga beli per baris, dipakai untuk audit & basis
@@ -119,6 +123,11 @@ export const STORAGE_KEYS = {
   SETTINGS: 'warkop27_settings',
   OPERATORS: 'warkop27_operators',
   ACTIVE_OPERATOR: 'warkop27_active_operator',
+  // Riwayat shift laci kas (buka dengan modal awal, tutup dengan hitung
+  // fisik & selisih) — lihat lib/storage/shiftService.ts. Beda dari
+  // ACTIVE_OPERATOR: ini data warung (dibagi lewat Supabase kalau ada),
+  // bukan status per-device.
+  SHIFTS: 'warkop27_shifts',
   LAST_BACKUP_AT: 'warkop27_last_backup_at',
   // Daftar ID menu yang sudah dikirim notifikasi "stok menipis"-nya, supaya
   // tidak kirim ulang tiap kali ada transaksi baru. Direset (ID dilepas dari

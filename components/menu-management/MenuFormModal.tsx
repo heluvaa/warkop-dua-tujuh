@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { X } from 'lucide-react';
-import type { MenuItem } from '@/lib/types';
+import { X, Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import type { MenuItem, MenuVariantConfig, MenuVariantOption, MenuToppingOption } from '@/lib/types';
 import { formatRupiah } from '@/lib/utils/format';
+import { hasAnyVariantConfig } from '@/lib/utils/variant';
+import { generateId } from '@/lib/storage/db';
 
 interface MenuFormData {
   name: string;
@@ -12,6 +14,24 @@ interface MenuFormData {
   category: string;
   stock: number;
   imageUrl?: string;
+  variants?: MenuVariantConfig;
+}
+
+// Draf baris editor untuk satu opsi varian (ukuran/level gula-es/topping) —
+// `amount` disimpan sebagai string mentah dari input supaya bisa dikosongkan
+// sementara saat diketik ulang, baru dikonversi ke number saat disimpan.
+interface VariantOptionDraft {
+  id: string;
+  name: string;
+  amount: string;
+}
+
+function toDrafts(options?: { id: string; name: string; priceDelta?: number; price?: number }[]): VariantOptionDraft[] {
+  return (options ?? []).map((o) => ({
+    id: o.id,
+    name: o.name,
+    amount: String(o.priceDelta ?? o.price ?? 0),
+  }));
 }
 
 // Foto disimpan sebagai data URL langsung di localStorage (belum ada
@@ -51,6 +71,81 @@ function compressImageFile(file: File): Promise<string> {
 
 const NEW_CATEGORY_VALUE = '__new__';
 
+// Editor generik untuk satu kategori opsi varian (Ukuran, Level Gula/Es,
+// atau Topping) — dipakai 3x di form dengan label & placeholder berbeda.
+// Baris dengan nama kosong otomatis diabaikan saat disimpan (lihat
+// handleSubmit), jadi kasir/pemilik warung boleh menambah baris kosong dulu
+// lalu batal mengisinya tanpa perlu menghapusnya manual.
+function VariantOptionListEditor({
+  title,
+  amountLabel,
+  addButtonLabel,
+  options,
+  onChange,
+}: {
+  title: string;
+  amountLabel: string;
+  addButtonLabel: string;
+  options: VariantOptionDraft[];
+  onChange: (next: VariantOptionDraft[]) => void;
+}) {
+  function updateRow(id: string, patch: Partial<Pick<VariantOptionDraft, 'name' | 'amount'>>) {
+    onChange(options.map((o) => (o.id === id ? { ...o, ...patch } : o)));
+  }
+  function removeRow(id: string) {
+    onChange(options.filter((o) => o.id !== id));
+  }
+  function addRow() {
+    onChange([...options, { id: generateId('opt'), name: '', amount: '0' }]);
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <label className="text-xs text-espresso/60">{title}</label>
+        <button
+          type="button"
+          onClick={addRow}
+          className="text-[11px] text-espresso font-medium flex items-center gap-1"
+        >
+          <Plus size={12} /> {addButtonLabel}
+        </button>
+      </div>
+      {options.length === 0 ? (
+        <p className="text-[11px] text-espresso/30">Belum ada opsi — kosongkan saja kalau tidak perlu.</p>
+      ) : (
+        <div className="space-y-2">
+          {options.map((o) => (
+            <div key={o.id} className="flex items-center gap-2">
+              <input
+                value={o.name}
+                onChange={(e) => updateRow(o.id, { name: e.target.value })}
+                placeholder="Nama opsi"
+                className="flex-1 min-w-0 border border-cream-dark rounded-card px-3 py-2 bg-surface text-espresso text-sm focus:outline-none focus:border-espresso"
+              />
+              <input
+                inputMode="numeric"
+                value={o.amount}
+                onChange={(e) => updateRow(o.id, { amount: e.target.value.replace(/\D/g, '') })}
+                placeholder={amountLabel}
+                className="w-24 shrink-0 border border-cream-dark rounded-card px-3 py-2 bg-surface text-espresso text-sm focus:outline-none focus:border-espresso"
+              />
+              <button
+                type="button"
+                onClick={() => removeRow(o.id)}
+                className="text-brick/70 hover:text-brick shrink-0"
+                aria-label="Hapus opsi"
+              >
+                <Trash2 size={15} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MenuFormModal({
   initial,
   existingCategories,
@@ -78,6 +173,20 @@ export default function MenuFormModal({
   );
   const [category, setCategory] = useState(
     initial?.category ?? (hasExistingCategories ? existingCategories[0] : '')
+  );
+
+  // Varian menu — opsional sepenuhnya. Kalau menu ini belum punya
+  // konfigurasi varian sama sekali, seksinya dibiarkan tertutup dulu supaya
+  // tidak mengacaukan alur tambah-menu yang biasa (cepat, tanpa varian).
+  const [showVariants, setShowVariants] = useState(hasAnyVariantConfig(initial?.variants));
+  const [sizeDrafts, setSizeDrafts] = useState<VariantOptionDraft[]>(
+    toDrafts(initial?.variants?.sizes)
+  );
+  const [sugarIceDrafts, setSugarIceDrafts] = useState<VariantOptionDraft[]>(
+    toDrafts(initial?.variants?.sugarIceLevels)
+  );
+  const [toppingDrafts, setToppingDrafts] = useState<VariantOptionDraft[]>(
+    toDrafts(initial?.variants?.toppings)
   );
 
   const isValid =
@@ -110,6 +219,29 @@ export default function MenuFormModal({
 
   function handleSubmit() {
     if (!isValid) return;
+
+    // Baris dengan nama kosong diabaikan (dianggap belum diisi, bukan
+    // error) — supaya kasir/pemilik warung bebas menambah baris kosong lalu
+    // membatalkannya tanpa perlu menghapus manual.
+    const sizes: MenuVariantOption[] = sizeDrafts
+      .filter((d) => d.name.trim().length > 0)
+      .map((d) => ({ id: d.id, name: d.name.trim(), priceDelta: Number(d.amount) || 0 }));
+    const sugarIceLevels: MenuVariantOption[] = sugarIceDrafts
+      .filter((d) => d.name.trim().length > 0)
+      .map((d) => ({ id: d.id, name: d.name.trim(), priceDelta: Number(d.amount) || 0 }));
+    const toppings: MenuToppingOption[] = toppingDrafts
+      .filter((d) => d.name.trim().length > 0)
+      .map((d) => ({ id: d.id, name: d.name.trim(), price: Number(d.amount) || 0 }));
+
+    const variants: MenuVariantConfig | undefined =
+      sizes.length > 0 || sugarIceLevels.length > 0 || toppings.length > 0
+        ? {
+            sizes: sizes.length > 0 ? sizes : undefined,
+            sugarIceLevels: sugarIceLevels.length > 0 ? sugarIceLevels : undefined,
+            toppings: toppings.length > 0 ? toppings : undefined,
+          }
+        : undefined;
+
     onSave({
       name: name.trim(),
       price: Number(price),
@@ -117,6 +249,7 @@ export default function MenuFormModal({
       category: category.trim(),
       stock: Number(stock),
       imageUrl,
+      variants,
     });
   }
 
@@ -270,6 +403,51 @@ export default function MenuFormModal({
               </span>
             </div>
           )}
+
+          <div className="border-t border-cream-dark pt-3">
+            <button
+              type="button"
+              onClick={() => setShowVariants((v) => !v)}
+              className="w-full flex items-center justify-between text-left"
+            >
+              <span className="text-sm font-medium text-espresso">Varian Menu (opsional)</span>
+              {showVariants ? (
+                <ChevronUp size={16} className="text-espresso/50" />
+              ) : (
+                <ChevronDown size={16} className="text-espresso/50" />
+              )}
+            </button>
+            <p className="text-[11px] text-espresso/40 mt-1">
+              Boleh diisi, boleh juga tidak. Kalau diisi, kasir akan diminta memilih ukuran/level
+              gula-es/topping saat menambahkan menu ini ke keranjang.
+            </p>
+
+            {showVariants && (
+              <div className="mt-3 space-y-4">
+                <VariantOptionListEditor
+                  title="Ukuran"
+                  amountLabel="+Harga"
+                  addButtonLabel="Tambah Ukuran"
+                  options={sizeDrafts}
+                  onChange={setSizeDrafts}
+                />
+                <VariantOptionListEditor
+                  title="Level Gula/Es"
+                  amountLabel="+Harga"
+                  addButtonLabel="Tambah Level"
+                  options={sugarIceDrafts}
+                  onChange={setSugarIceDrafts}
+                />
+                <VariantOptionListEditor
+                  title="Topping"
+                  amountLabel="+Harga"
+                  addButtonLabel="Tambah Topping"
+                  options={toppingDrafts}
+                  onChange={setToppingDrafts}
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         <button

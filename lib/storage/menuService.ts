@@ -1,7 +1,7 @@
 import { getItem, setItem, generateId, STORAGE_KEYS } from './db';
 import type { MenuItem } from '../types';
 import { LOW_STOCK_THRESHOLD } from '../constants';
-import { sendTelegramNotification } from '../telegram';
+import { sendNotification } from '../notify';
 import { getSettings } from './settingsService';
 
 export async function getAllMenu(): Promise<MenuItem[]> {
@@ -90,7 +90,7 @@ async function checkLowStockNotification(item: MenuItem): Promise<void> {
     const settings = await getSettings();
     if (settings.lowStockNotifyEnabled) {
       const label = item.stock === 0 ? 'HABIS' : `tersisa ${item.stock}`;
-      await sendTelegramNotification(
+      await sendNotification(
         `⚠️ <b>Stok Menipis</b>\n${item.name} (${item.category}) ${label}.`
       );
     }

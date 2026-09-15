@@ -13,7 +13,7 @@
 import { getAllKasbon } from './storage/kasbonService';
 import { getAllMenu } from './storage/menuService';
 import { getPengeluaranByDate } from './storage/pengeluaranService';
-import { getTransactionsByDate } from './storage/transactionService';
+import { getTransactionsByDate, getCashAmount, getQrisAmount } from './storage/transactionService';
 import { daysSince, todayDateKey } from './utils/date';
 import { formatRupiah } from './utils/format';
 import { LOW_STOCK_THRESHOLD } from './constants';
@@ -46,12 +46,8 @@ async function buildOmzetReply(): Promise<string> {
   const transactions = (await getTransactionsByDate(dateKey)).filter((t) => !t.voided);
   const pengeluaran = await getPengeluaranByDate(dateKey);
 
-  const totalCash = transactions
-    .filter((t) => t.paymentMethod === 'cash')
-    .reduce((sum, t) => sum + t.total, 0);
-  const totalQris = transactions
-    .filter((t) => t.paymentMethod === 'qris')
-    .reduce((sum, t) => sum + t.total, 0);
+  const totalCash = transactions.reduce((sum, t) => sum + getCashAmount(t), 0);
+  const totalQris = transactions.reduce((sum, t) => sum + getQrisAmount(t), 0);
   const totalPemasukan = totalCash + totalQris;
   const totalPengeluaran = pengeluaran.reduce((sum, e) => sum + e.amount, 0);
   const laba = totalPemasukan - totalPengeluaran;

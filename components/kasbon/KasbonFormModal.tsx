@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Plus, Minus, Search } from 'lucide-react';
 import type { KasbonEntry, MenuItem } from '@/lib/types';
 import { getAllMenu } from '@/lib/storage/menuService';
@@ -19,12 +19,21 @@ export default function KasbonFormModal({
 }: {
   initial?: KasbonEntry | null;
   onClose: () => void;
-  onSave: (data: { customerName: string; items: KasbonItemDraft[]; total: number }) => void;
+  onSave: (data: { customerName: string; items: KasbonItemDraft[]; total: number }) => void | Promise<void>;
 }) {
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [customerName, setCustomerName] = useState(initial?.customerName ?? '');
   const [items, setItems] = useState<KasbonItemDraft[]>(initial?.items ?? []);
   const [menuQuery, setMenuQuery] = useState('');
+  // Cegah tombol simpan kepencet dua kali dengan cepat — sekali diproses,
+  // dikunci sampai onSave selesai supaya tidak dobel jadi kasbon & notifikasi.
+  const [submitting, setSubmitting] = useState(false);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const isEditing = Boolean(initial);
   const isEditingLunas = isEditing && initial?.status === 'lunas';
@@ -64,9 +73,14 @@ export default function KasbonFormModal({
     );
   }
 
-  function handleSubmit() {
-    if (!isValid) return;
-    onSave({ customerName: customerName.trim(), items, total });
+  async function handleSubmit() {
+    if (!isValid || submitting) return;
+    setSubmitting(true);
+    try {
+      await onSave({ customerName: customerName.trim(), items, total });
+    } finally {
+      if (mountedRef.current) setSubmitting(false);
+    }
   }
 
   return (
@@ -76,7 +90,7 @@ export default function KasbonFormModal({
           <h2 className="font-display font-semibold text-lg text-espresso">
             {isEditing ? 'Edit Kasbon' : 'Kasbon Baru'}
           </h2>
-          <button onClick={onClose}>
+          <button onClick={onClose} disabled={submitting}>
             <X size={20} className="text-espresso/60" />
           </button>
         </div>
@@ -172,10 +186,10 @@ export default function KasbonFormModal({
 
         <button
           onClick={handleSubmit}
-          disabled={!isValid}
+          disabled={!isValid || submitting}
           className="w-full bg-espresso text-cream rounded-card py-3 font-medium disabled:opacity-40"
         >
-          {isEditing ? 'Simpan Perubahan' : 'Simpan Kasbon'}
+          {submitting ? 'Menyimpan...' : isEditing ? 'Simpan Perubahan' : 'Simpan Kasbon'}
         </button>
       </div>
     </div>
