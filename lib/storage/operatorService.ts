@@ -4,7 +4,7 @@
  * jangan pakai untuk data sensitif.
  */
 
-import { getItem, setItem, generateId, STORAGE_KEYS } from './db';
+import { getItem, setItem, getLocalItem, setLocalItem, generateId, STORAGE_KEYS } from './db';
 import type { Operator } from '../types';
 import { todayDateKey } from '../utils/date';
 import { formatTime } from '../utils/format';
@@ -52,8 +52,12 @@ export interface ActiveOperatorSession {
 
 // Sesi aktif hanya dianggap valid untuk hari yang sama. Ini bukan
 // "logout" beneran, cuma reminder ringan siapa yang pegang kasir hari ini.
+//
+// Sengaja pakai getLocalItem/setLocalItem (selalu localStorage per-device),
+// BUKAN getItem/setItem (yang lewat Supabase) — supaya status login kasir
+// tidak dibagi/bocor ke device lain. Lihat komentar di lib/storage/db.ts.
 export async function getActiveOperator(): Promise<ActiveOperatorSession | null> {
-  const session = await getItem<ActiveOperatorSession | null>(STORAGE_KEYS.ACTIVE_OPERATOR, null);
+  const session = getLocalItem<ActiveOperatorSession | null>(STORAGE_KEYS.ACTIVE_OPERATOR, null);
   if (!session || session.dateKey !== todayDateKey()) return null;
   return session;
 }
@@ -64,7 +68,7 @@ export async function setActiveOperator(operator: Operator): Promise<void> {
     operatorName: operator.name,
     dateKey: todayDateKey(),
   };
-  await setItem(STORAGE_KEYS.ACTIVE_OPERATOR, session);
+  setLocalItem(STORAGE_KEYS.ACTIVE_OPERATOR, session);
 
   const settings = await getSettings();
   if (settings.shiftNotifyEnabled) {
@@ -78,7 +82,7 @@ export async function clearActiveOperator(): Promise<void> {
   // Ambil sesi yang masih aktif SEBELUM dihapus, supaya notifikasi tutup
   // shift tahu nama kasir yang barusan logout.
   const session = await getActiveOperator();
-  await setItem(STORAGE_KEYS.ACTIVE_OPERATOR, null);
+  setLocalItem(STORAGE_KEYS.ACTIVE_OPERATOR, null);
 
   if (session) {
     const settings = await getSettings();
