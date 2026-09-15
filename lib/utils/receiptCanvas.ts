@@ -79,7 +79,7 @@ export function renderReceiptToCanvas(canvas: HTMLCanvasElement, data: ReceiptCa
 
   const lines: Line[] = [];
 
-  function addWrappedLeft(text: string, font: string, height: number) {
+  function addWrappedLeft(ctx: CanvasRenderingContext2D, text: string, font: string, height: number) {
     ctx.font = font;
     for (const wrapped of wrapText(ctx, text, CONTENT_WIDTH)) {
       lines.push({ kind: 'left', text: wrapped, font, height });
@@ -96,14 +96,14 @@ export function renderReceiptToCanvas(canvas: HTMLCanvasElement, data: ReceiptCa
   lines.push({ kind: 'gap', height: 6 });
   lines.push({ kind: 'dashed' });
 
-  if (data.customerName) addWrappedLeft(`Atas nama: ${data.customerName}`, FONT_BODY, LH_BODY);
-  if (data.operatorName) addWrappedLeft(`Kasir: ${data.operatorName}`, FONT_BODY, LH_BODY);
+  if (data.customerName) addWrappedLeft(ctx, `Atas nama: ${data.customerName}`, FONT_BODY, LH_BODY);
+  if (data.operatorName) addWrappedLeft(ctx, `Kasir: ${data.operatorName}`, FONT_BODY, LH_BODY);
   if (data.customerName || data.operatorName) lines.push({ kind: 'dashed' });
 
   for (const item of data.items) {
     const nameLine = `${item.name}${item.variantLabel ? ` (${item.variantLabel})` : ''}`;
-    addWrappedLeft(nameLine, FONT_BODY, LH_BODY);
-    if (item.note) addWrappedLeft(`  "${item.note}"`, FONT_SMALL, LH_SMALL);
+    addWrappedLeft(ctx, nameLine, FONT_BODY, LH_BODY);
+    if (item.note) addWrappedLeft(ctx, `  "${item.note}"`, FONT_SMALL, LH_SMALL);
     lines.push({
       kind: 'row',
       left: `  ${item.quantity} x ${formatRupiah(item.unitPrice)}`,
