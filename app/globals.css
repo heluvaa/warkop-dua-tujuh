@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Warna dasar (mode terang). Format "R G B" supaya bisa dipakai Tailwind
+     dengan modifier opacity, misal bg-espresso/50. */
+  --color-espresso-light: 90 56 37;
+  --color-espresso: 60 36 21;
+  --color-espresso-dark: 36 20 8;
+  --color-caramel-light: 168 122 86;
+  --color-caramel: 139 94 60;
+  --color-cream: 251 246 238;
+  --color-cream-dark: 240 230 214;
+  --color-surface: 255 255 255;
+  --color-crema: 201 162 39;
+  --color-sage: 76 122 94;
+  --color-brick: 179 67 43;
+}
+
+.dark {
+  /* Kanvas halaman & permukaan kartu dibalik jadi gelap; teks jadi terang.
+     Warna aksen (crema/sage/brick) sedikit dicerahkan supaya tetap kontras
+     di atas latar gelap. Sidebar sengaja TIDAK memakai variabel ini —
+     warnanya dikunci manual supaya navigasi tetap konsisten di kedua mode. */
+  --color-espresso-light: 196 176 156;
+  --color-espresso: 232 222 208;
+  --color-espresso-dark: 250 246 240;
+  --color-caramel-light: 196 156 120;
+  --color-caramel: 210 168 128;
+  --color-cream: 24 17 12;
+  --color-cream-dark: 38 29 22;
+  --color-surface: 42 32 24;
+  --color-crema: 224 184 68;
+  --color-sage: 118 176 140;
+  --color-brick: 224 112 88;
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Hide scrollbar for horizontal category chips, keep it scrollable */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

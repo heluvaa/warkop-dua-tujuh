@@ -1,0 +1,35 @@
+{
+  "name": "Warkop Dua Tujuh — Kasir",
+  "short_name": "Warkop 27",
+  "description": "Sistem kasir dan manajemen Warkop Dua Tujuh",
+  "start_url": "/kasir",
+  "id": "/kasir",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#FBF6EE",
+  "theme_color": "#3C2415",
+  "lang": "id-ID",
+  "dir": "ltr",
+  "categories": ["business", "food", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
