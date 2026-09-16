@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Wallet, CheckCircle2, TrendingUp, TrendingDown, Clock, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
+import { Wallet, CheckCircle2, TrendingUp, TrendingDown, Clock, Trash2, AlertTriangle, Loader2, Pencil } from 'lucide-react';
 import type { ShiftEntry } from '@/lib/types';
-import { getShiftHistory, clearAllShifts } from '@/lib/storage/shiftService';
+import { getShiftHistory, clearAllShifts, updateShiftModal } from '@/lib/storage/shiftService';
 import { formatRupiah, formatDateTime } from '@/lib/utils/format';
-import { useIsPemilik } from '@/lib/context/OperatorSessionContext';
+import { useIsPemilik, useOperatorSession } from '@/lib/context/OperatorSessionContext';
 
 // Riwayat shift laci kas (buka dengan modal awal, tutup dengan hitung fisik
 // & selisih) — lihat lib/storage/shiftService.ts. Dipisah jadi komponen
@@ -71,7 +71,7 @@ export default function ShiftHistorySection() {
       </div>
       <div className="space-y-2">
         {visible.map((shift) => (
-          <ShiftRow key={shift.id} shift={shift} />
+          <ShiftRow key={shift.id} shift={shift} isPemilik={isPemilik} onEdited={refresh} />
         ))}
       </div>
       {shifts.length > 5 && (
@@ -123,7 +123,17 @@ export default function ShiftHistorySection() {
   );
 }
 
-function ShiftRow({ shift }: { shift: ShiftEntry }) {
+function ShiftRow({
+  shift,
+  isPemilik,
+  onEdited,
+}: {
+  shift: ShiftEntry;
+  isPemilik: boolean;
+  onEdited: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+
   if (shift.status === 'open') {
     return (
       <div className="bg-surface rounded-card border border-cream-dark p-3.5 flex items-center justify-between gap-3">
@@ -135,7 +145,37 @@ function ShiftRow({ shift }: { shift: ShiftEntry }) {
           <p className="text-xs text-espresso/50 mt-0.5">
             Dibuka {formatDateTime(shift.openedAt)} · Modal {formatRupiah(shift.modalAwal)}
           </p>
+          {/* Jejak audit: kelihatan kalau modal awal shift ini pernah
+              dikoreksi pemilik dari nilai aslinya. */}
+          {shift.modalAwalEditedAt && (
+            <p className="text-[11px] text-espresso/40 mt-0.5">
+              Dikoreksi dari {formatRupiah(shift.modalAwalOriginal ?? 0)} oleh{' '}
+              {shift.modalAwalEditedByOperatorName} · {formatDateTime(shift.modalAwalEditedAt)}
+            </p>
+          )}
         </div>
+        {/* Cuma pemilik yang boleh koreksi modal awal — kasir yang salah
+            ketik modalnya sendiri harus minta pemilik yang benerin, supaya
+            ada kontrol siapa yang boleh ubah angka kas. */}
+        {isPemilik && (
+          <button
+            onClick={() => setEditing(true)}
+            className="shrink-0 w-8 h-8 rounded-full bg-cream flex items-center justify-center text-espresso/60"
+            aria-label="Koreksi modal awal"
+          >
+            <Pencil size={14} />
+          </button>
+        )}
+        {editing && (
+          <EditModalAwalDialog
+            shift={shift}
+            onClose={() => setEditing(false)}
+            onSaved={() => {
+              setEditing(false);
+              onEdited();
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -192,6 +232,80 @@ function ShiftRow({ shift }: { shift: ShiftEntry }) {
           &ldquo;{shift.note}&rdquo;
         </p>
       )}
+    </div>
+  );
+}
+
+// Dialog kecil khusus pemilik untuk koreksi modal awal shift yang masih
+// 'open' — dipisah dari ShiftRow supaya ShiftRow sendiri tetap ringkas.
+function EditModalAwalDialog({
+  shift,
+  onClose,
+  onSaved,
+}: {
+  shift: ShiftEntry;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { operatorName } = useOperatorSession();
+  const [amountInput, setAmountInput] = useState(String(shift.modalAwal));
+  const [saving, setSaving] = useState(false);
+  const modalAwal = Number(amountInput) || 0;
+
+  async function handleSave() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await updateShiftModal({
+        shiftId: shift.id,
+        modalAwal,
+        editedByOperatorName: operatorName,
+      });
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-cream rounded-card p-5 max-w-xs w-full space-y-4">
+        <div>
+          <h3 className="font-display font-semibold text-lg text-espresso">Koreksi Modal Awal</h3>
+          <p className="text-xs text-espresso/60 mt-1">
+            Shift {shift.operatorName} — dibuka {formatDateTime(shift.openedAt)}. Perubahan ini ikut
+            memengaruhi perhitungan selisih kas saat shift ini nanti ditutup.
+          </p>
+        </div>
+        <div>
+          <label className="text-xs text-espresso/60">Modal Awal</label>
+          <input
+            inputMode="numeric"
+            autoFocus
+            value={amountInput}
+            onChange={(e) => setAmountInput(e.target.value.replace(/\D/g, ''))}
+            className="w-full border border-cream-dark rounded-card px-4 py-3 bg-surface text-espresso mt-1 text-lg font-semibold focus:outline-none focus:border-espresso"
+          />
+          <p className="text-xs text-espresso/50 mt-1">{formatRupiah(modalAwal)}</p>
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="flex-1 border border-cream-dark rounded-card py-2.5 text-espresso disabled:opacity-40"
+          >
+            Batal
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 bg-espresso text-cream rounded-card py-2.5 disabled:opacity-40 flex items-center justify-center gap-1.5"
+          >
+            {saving ? <Loader2 size={16} className="animate-spin" /> : null}
+            Simpan
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

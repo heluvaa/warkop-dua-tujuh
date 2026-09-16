@@ -299,6 +299,15 @@ export interface ShiftEntry {
   operatorId: string;
   operatorName: string;
   modalAwal: number;
+  // Terisi kalau modalAwal pernah dikoreksi setelah shift dibuka (mis. kasir
+  // salah ketik) — lihat updateShiftModal di shiftService.ts. Hanya pemilik
+  // yang boleh melakukan ini, dan hanya selama shift masih 'open' (shift
+  // yang sudah ditutup adalah catatan final, tidak bisa diubah lagi).
+  modalAwalEditedAt?: string;
+  modalAwalEditedByOperatorName?: string;
+  // Nilai modalAwal yang PERTAMA kali diketik sebelum dikoreksi — disimpan
+  // supaya masih ada jejak audit kalau ada yang tanya "awalnya berapa sih".
+  modalAwalOriginal?: number;
   openedAt: string;
   status: ShiftStatus;
   // Kasir yang MENUTUP shift ini — dicatat terpisah dari operatorName di

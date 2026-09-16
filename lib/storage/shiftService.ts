@@ -94,6 +94,44 @@ export async function openShift(data: {
   return newShift;
 }
 
+// Koreksi modal awal shift yang MASIH BERJALAN (mis. kasir salah ketik pas
+// buka shift). Sengaja dipisah dari openShift() dan cuma boleh dipanggil
+// dari UI yang sudah dicek pemilik (lihat isPemilik di
+// components/laporan/ShiftHistorySection.tsx) — fungsi ini sendiri tidak
+// mengecek role, jadi jangan dipanggil langsung dari tempat lain tanpa guard
+// itu. Shift yang statusnya 'closed' TIDAK bisa dikoreksi lewat sini —
+// angkanya sudah jadi snapshot final laporan (systemCash/selisih sudah
+// dihitung & dicatat), lihat closeShift(). Kalau shift yang sudah ditutup
+// ternyata salah, itu berarti perlu dikoreksi manual dari data mentahnya,
+// bukan lewat fungsi ini.
+export async function updateShiftModal(data: {
+  shiftId: string;
+  modalAwal: number;
+  editedByOperatorName: string;
+}): Promise<ShiftEntry | null> {
+  const all = await getAllShifts();
+  const shift = all.find((s) => s.id === data.shiftId);
+  if (!shift || shift.status !== 'open') return null;
+  if (shift.modalAwal === data.modalAwal) return shift;
+
+  const updatedShift: ShiftEntry = {
+    ...shift,
+    modalAwal: data.modalAwal,
+    // modalAwalOriginal cuma diisi SEKALI (koreksi kedua dst tidak menimpa
+    // nilai asli yang pertama kali diketik).
+    modalAwalOriginal: shift.modalAwalOriginal ?? shift.modalAwal,
+    modalAwalEditedAt: new Date().toISOString(),
+    modalAwalEditedByOperatorName: data.editedByOperatorName,
+  };
+
+  await setItem(
+    STORAGE_KEYS.SHIFTS,
+    all.map((s) => (s.id === shift.id ? updatedShift : s))
+  );
+
+  return updatedShift;
+}
+
 export interface ShiftCashSummary {
   cashSalesTotal: number;
   qrisSalesTotal: number;
