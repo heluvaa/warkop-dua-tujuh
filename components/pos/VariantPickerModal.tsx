@@ -7,10 +7,10 @@ import { formatRupiah } from '@/lib/utils/format';
 import { computeVariantExtra } from '@/lib/utils/variant';
 
 // Dialog pilihan varian yang muncul saat kasir menambahkan menu yang punya
-// konfigurasi varian (ukuran/level gula-es/topping) ke keranjang. Semua
-// pilihan di sini bersifat opsional untuk KASIR isi — ukuran & level
-// gula/es sudah di-default ke opsi pertama supaya kasir bisa langsung tekan
-// "Tambah ke Keranjang" tanpa harus memilih apa-apa kalau memang tidak
+// konfigurasi varian (ukuran/rasa/panas-dingin/topping) ke keranjang. Semua
+// pilihan di sini bersifat opsional untuk KASIR isi — ukuran, rasa & pilihan
+// panas/dingin sudah di-default ke opsi pertama supaya kasir bisa langsung
+// tekan "Tambah ke Keranjang" tanpa harus memilih apa-apa kalau memang tidak
 // perlu; topping defaultnya tidak ada yang dicentang.
 export default function VariantPickerModal({
   item,
@@ -22,12 +22,14 @@ export default function VariantPickerModal({
   onConfirm: (variant: SelectedVariant) => void;
 }) {
   const sizes = item.variants?.sizes ?? [];
-  const sugarIceLevels = item.variants?.sugarIceLevels ?? [];
+  const flavors = item.variants?.flavors ?? [];
+  const hotColdOptions = item.variants?.hotCold ?? [];
   const toppings = item.variants?.toppings ?? [];
 
   const [selectedSize, setSelectedSize] = useState<MenuVariantOption | undefined>(sizes[0]);
-  const [selectedSugarIce, setSelectedSugarIce] = useState<MenuVariantOption | undefined>(
-    sugarIceLevels[0]
+  const [selectedFlavor, setSelectedFlavor] = useState<MenuVariantOption | undefined>(flavors[0]);
+  const [selectedHotCold, setSelectedHotCold] = useState<MenuVariantOption | undefined>(
+    hotColdOptions[0]
   );
   const [selectedToppingIds, setSelectedToppingIds] = useState<string[]>([]);
 
@@ -37,8 +39,11 @@ export default function VariantPickerModal({
 
   const variant: SelectedVariant = {
     size: selectedSize ? { name: selectedSize.name, priceDelta: selectedSize.priceDelta } : undefined,
-    sugarIce: selectedSugarIce
-      ? { name: selectedSugarIce.name, priceDelta: selectedSugarIce.priceDelta }
+    flavor: selectedFlavor
+      ? { name: selectedFlavor.name, priceDelta: selectedFlavor.priceDelta }
+      : undefined,
+    hotCold: selectedHotCold
+      ? { name: selectedHotCold.name, priceDelta: selectedHotCold.priceDelta }
       : undefined,
     toppings: selectedToppings.map((t) => ({ name: t.name, price: t.price })),
   };
@@ -91,16 +96,43 @@ export default function VariantPickerModal({
           </div>
         )}
 
-        {sugarIceLevels.length > 0 && (
+        {flavors.length > 0 && (
           <div>
-            <p className="text-xs text-espresso/60 mb-1.5">Level Gula/Es</p>
+            <p className="text-xs text-espresso/60 mb-1.5">Rasa</p>
             <div className="flex flex-wrap gap-2">
-              {sugarIceLevels.map((s) => (
+              {flavors.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setSelectedFlavor(f)}
+                  className={`px-3.5 py-2 rounded-card border text-sm ${
+                    selectedFlavor?.id === f.id
+                      ? 'bg-espresso text-cream border-espresso'
+                      : 'bg-surface text-espresso border-cream-dark'
+                  }`}
+                >
+                  {f.name}
+                  {f.priceDelta !== 0 && (
+                    <span className="ml-1 opacity-70">
+                      ({f.priceDelta > 0 ? '+' : ''}
+                      {formatRupiah(f.priceDelta)})
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {hotColdOptions.length > 0 && (
+          <div>
+            <p className="text-xs text-espresso/60 mb-1.5">Panas/Dingin</p>
+            <div className="flex flex-wrap gap-2">
+              {hotColdOptions.map((s) => (
                 <button
                   key={s.id}
-                  onClick={() => setSelectedSugarIce(s)}
+                  onClick={() => setSelectedHotCold(s)}
                   className={`px-3.5 py-2 rounded-card border text-sm ${
-                    selectedSugarIce?.id === s.id
+                    selectedHotCold?.id === s.id
                       ? 'bg-espresso text-cream border-espresso'
                       : 'bg-surface text-espresso border-cream-dark'
                   }`}

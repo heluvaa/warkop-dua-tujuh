@@ -17,7 +17,7 @@ interface MenuFormData {
   variants?: MenuVariantConfig;
 }
 
-// Draf baris editor untuk satu opsi varian (ukuran/level gula-es/topping) —
+// Draf baris editor untuk satu opsi varian (ukuran/rasa/panas-dingin/topping) —
 // `amount` disimpan sebagai string mentah dari input supaya bisa dikosongkan
 // sementara saat diketik ulang, baru dikonversi ke number saat disimpan.
 interface VariantOptionDraft {
@@ -71,8 +71,8 @@ function compressImageFile(file: File): Promise<string> {
 
 const NEW_CATEGORY_VALUE = '__new__';
 
-// Editor generik untuk satu kategori opsi varian (Ukuran, Level Gula/Es,
-// atau Topping) — dipakai 3x di form dengan label & placeholder berbeda.
+// Editor generik untuk satu kategori opsi varian (Ukuran, Rasa,
+// Panas/Dingin, atau Topping) — dipakai 4x di form dengan label & placeholder berbeda.
 // Baris dengan nama kosong otomatis diabaikan saat disimpan (lihat
 // handleSubmit), jadi kasir/pemilik warung boleh menambah baris kosong dulu
 // lalu batal mengisinya tanpa perlu menghapusnya manual.
@@ -182,8 +182,11 @@ export default function MenuFormModal({
   const [sizeDrafts, setSizeDrafts] = useState<VariantOptionDraft[]>(
     toDrafts(initial?.variants?.sizes)
   );
-  const [sugarIceDrafts, setSugarIceDrafts] = useState<VariantOptionDraft[]>(
-    toDrafts(initial?.variants?.sugarIceLevels)
+  const [flavorDrafts, setFlavorDrafts] = useState<VariantOptionDraft[]>(
+    toDrafts(initial?.variants?.flavors)
+  );
+  const [hotColdDrafts, setHotColdDrafts] = useState<VariantOptionDraft[]>(
+    toDrafts(initial?.variants?.hotCold)
   );
   const [toppingDrafts, setToppingDrafts] = useState<VariantOptionDraft[]>(
     toDrafts(initial?.variants?.toppings)
@@ -226,7 +229,10 @@ export default function MenuFormModal({
     const sizes: MenuVariantOption[] = sizeDrafts
       .filter((d) => d.name.trim().length > 0)
       .map((d) => ({ id: d.id, name: d.name.trim(), priceDelta: Number(d.amount) || 0 }));
-    const sugarIceLevels: MenuVariantOption[] = sugarIceDrafts
+    const flavors: MenuVariantOption[] = flavorDrafts
+      .filter((d) => d.name.trim().length > 0)
+      .map((d) => ({ id: d.id, name: d.name.trim(), priceDelta: Number(d.amount) || 0 }));
+    const hotCold: MenuVariantOption[] = hotColdDrafts
       .filter((d) => d.name.trim().length > 0)
       .map((d) => ({ id: d.id, name: d.name.trim(), priceDelta: Number(d.amount) || 0 }));
     const toppings: MenuToppingOption[] = toppingDrafts
@@ -234,10 +240,11 @@ export default function MenuFormModal({
       .map((d) => ({ id: d.id, name: d.name.trim(), price: Number(d.amount) || 0 }));
 
     const variants: MenuVariantConfig | undefined =
-      sizes.length > 0 || sugarIceLevels.length > 0 || toppings.length > 0
+      sizes.length > 0 || flavors.length > 0 || hotCold.length > 0 || toppings.length > 0
         ? {
             sizes: sizes.length > 0 ? sizes : undefined,
-            sugarIceLevels: sugarIceLevels.length > 0 ? sugarIceLevels : undefined,
+            flavors: flavors.length > 0 ? flavors : undefined,
+            hotCold: hotCold.length > 0 ? hotCold : undefined,
             toppings: toppings.length > 0 ? toppings : undefined,
           }
         : undefined;
@@ -418,8 +425,8 @@ export default function MenuFormModal({
               )}
             </button>
             <p className="text-[11px] text-espresso/40 mt-1">
-              Boleh diisi, boleh juga tidak. Kalau diisi, kasir akan diminta memilih ukuran/level
-              gula-es/topping saat menambahkan menu ini ke keranjang.
+              Boleh diisi, boleh juga tidak. Kalau diisi, kasir akan diminta memilih
+              ukuran/rasa/panas-dingin/topping saat menambahkan menu ini ke keranjang.
             </p>
 
             {showVariants && (
@@ -432,11 +439,18 @@ export default function MenuFormModal({
                   onChange={setSizeDrafts}
                 />
                 <VariantOptionListEditor
-                  title="Level Gula/Es"
+                  title="Rasa"
                   amountLabel="+Harga"
-                  addButtonLabel="Tambah Level"
-                  options={sugarIceDrafts}
-                  onChange={setSugarIceDrafts}
+                  addButtonLabel="Tambah Rasa"
+                  options={flavorDrafts}
+                  onChange={setFlavorDrafts}
+                />
+                <VariantOptionListEditor
+                  title="Panas/Dingin"
+                  amountLabel="+Harga"
+                  addButtonLabel="Tambah Pilihan"
+                  options={hotColdDrafts}
+                  onChange={setHotColdDrafts}
                 />
                 <VariantOptionListEditor
                   title="Topping"

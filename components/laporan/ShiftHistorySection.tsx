@@ -169,6 +169,7 @@ function ShiftRow({
         {editing && (
           <EditModalAwalDialog
             shift={shift}
+            isPemilik={isPemilik}
             onClose={() => setEditing(false)}
             onSaved={() => {
               setEditing(false);
@@ -240,10 +241,12 @@ function ShiftRow({
 // 'open' — dipisah dari ShiftRow supaya ShiftRow sendiri tetap ringkas.
 function EditModalAwalDialog({
   shift,
+  isPemilik,
   onClose,
   onSaved,
 }: {
   shift: ShiftEntry;
+  isPemilik: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -253,7 +256,10 @@ function EditModalAwalDialog({
   const modalAwal = Number(amountInput) || 0;
 
   async function handleSave() {
-    if (saving) return;
+    // Tombol pembuka dialog ini sudah disembunyikan dari kasir (lihat
+    // ShiftRow), tapi dijaga sekali lagi di sini supaya tidak bisa dipanggil
+    // lewat jalan lain selain klik tombol yang memang khusus pemilik.
+    if (!isPemilik || saving) return;
     setSaving(true);
     try {
       await updateShiftModal({

@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Search, X, ShoppingBasket, History } from 'lucide-react';
+import { Plus, Search, X, ShoppingBasket, History, Tags, Lock } from 'lucide-react';
 import type { MenuItem, StockPurchaseEntry, StockPurchaseLineItem } from '@/lib/types';
+import { useIsPemilik } from '@/lib/context/OperatorSessionContext';
 import {
   getAllMenu,
   createMenuItem,
@@ -16,14 +17,21 @@ import { formatRupiah, formatDateTime } from '@/lib/utils/format';
 import MenuListRow from '@/components/menu-management/MenuListRow';
 import MenuFormModal from '@/components/menu-management/MenuFormModal';
 import StockPurchaseModal from '@/components/menu-management/StockPurchaseModal';
+import CategoryManagerModal from '@/components/menu-management/CategoryManagerModal';
 
 export default function MenuManagementPage() {
+  // Kasir cuma boleh lihat daftar menu (baca-only) — tambah/ubah/hapus menu,
+  // kelola kategori, dan belanja stok cuma untuk pemilik. Guard dipasang di
+  // dua tempat: UI (tombol disembunyikan) dan handler (early return) supaya
+  // tetap aman kalau ada jalan lain untuk memanggilnya.
+  const isPemilik = useIsPemilik();
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<MenuItem | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [showStockPurchase, setShowStockPurchase] = useState(false);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [recentPurchases, setRecentPurchases] = useState<StockPurchaseEntry[]>([]);
 
   const filteredMenu = useMemo(() => {
@@ -58,6 +66,7 @@ export default function MenuManagementPage() {
   }, []);
 
   async function handleSave(data: { name: string; price: number; hpp: number; category: string; stock: number; imageUrl?: string; variants?: MenuItem['variants'] }) {
+    if (!isPemilik) return;
     if (editing) {
       await updateMenuItem(editing.id, data);
     } else {
@@ -69,12 +78,14 @@ export default function MenuManagementPage() {
   }
 
   async function handleDelete(id: string) {
+    if (!isPemilik) return;
     await deleteMenuItem(id);
     setConfirmDeleteId(null);
     await refresh();
   }
 
   async function handleSaveStockPurchase(data: { items: StockPurchaseLineItem[]; updateHpp: boolean }) {
+    if (!isPemilik) return;
     const session = await getActiveOperator();
     await createStockPurchase({ ...data, operatorName: session?.operatorName });
     setShowStockPurchase(false);
@@ -84,25 +95,37 @@ export default function MenuManagementPage() {
 
   return (
     <div className="p-4 pb-24 md:pb-6">
-      <div className="flex items-center justify-between mb-4 gap-2">
-        <h1 className="font-display font-semibold text-xl text-espresso">Manajemen Menu & Stok</h1>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={() => setShowStockPurchase(true)}
-            className="flex items-center gap-1.5 bg-surface border border-cream-dark text-espresso rounded-card px-3 py-2 text-sm font-medium"
-          >
-            <ShoppingBasket size={16} /> Belanja Stok
-          </button>
-          <button
-            onClick={() => {
-              setEditing(null);
-              setShowForm(true);
-            }}
-            className="flex items-center gap-1.5 bg-espresso text-cream rounded-card px-3.5 py-2 text-sm font-medium"
-          >
-            <Plus size={16} /> Tambah
-          </button>
-        </div>
+      <div className="mb-4">
+        <h1 className="font-display font-semibold text-xl text-espresso mb-2">Manajemen Menu & Stok</h1>
+        {isPemilik ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setShowCategoryManager(true)}
+              className="flex items-center gap-1.5 bg-surface border border-cream-dark text-espresso rounded-card px-3 py-2 text-sm font-medium"
+            >
+              <Tags size={16} /> Kategori
+            </button>
+            <button
+              onClick={() => setShowStockPurchase(true)}
+              className="flex items-center gap-1.5 bg-surface border border-cream-dark text-espresso rounded-card px-3 py-2 text-sm font-medium"
+            >
+              <ShoppingBasket size={16} /> Belanja Stok
+            </button>
+            <button
+              onClick={() => {
+                setEditing(null);
+                setShowForm(true);
+              }}
+              className="flex items-center gap-1.5 bg-espresso text-cream rounded-card px-3.5 py-2 text-sm font-medium"
+            >
+              <Plus size={16} /> Tambah
+            </button>
+          </div>
+        ) : (
+          <p className="flex items-center gap-1.5 text-espresso/50 text-sm">
+            <Lock size={14} /> Cuma pemilik yang bisa ubah menu & stok. Kamu bisa lihat daftarnya saja.
+          </p>
+        )}
       </div>
 
       <div className="relative mb-4">
@@ -140,6 +163,7 @@ export default function MenuManagementPage() {
             <MenuListRow
               key={item.id}
               item={item}
+              isPemilik={isPemilik}
               onEdit={() => {
                 setEditing(item);
                 setShowForm(true);
@@ -150,7 +174,7 @@ export default function MenuManagementPage() {
         </div>
       )}
 
-      {recentPurchases.length > 0 && (
+      {isPemilik && recentPurchases.length > 0 && (
         <section className="mt-6">
           <h2 className="font-display font-semibold text-espresso mb-2 flex items-center gap-1.5 text-sm">
             <History size={15} /> Belanja Stok Terbaru
@@ -177,7 +201,7 @@ export default function MenuManagementPage() {
         </section>
       )}
 
-      {showForm && (
+      {isPemilik && showForm && (
         <MenuFormModal
           initial={editing}
           existingCategories={existingCategories}
@@ -189,7 +213,7 @@ export default function MenuManagementPage() {
         />
       )}
 
-      {showStockPurchase && (
+      {isPemilik && showStockPurchase && (
         <StockPurchaseModal
           menu={menu}
           onClose={() => setShowStockPurchase(false)}
@@ -197,7 +221,15 @@ export default function MenuManagementPage() {
         />
       )}
 
-      {confirmDeleteId && (
+      {isPemilik && showCategoryManager && (
+        <CategoryManagerModal
+          menu={menu}
+          onClose={() => setShowCategoryManager(false)}
+          onChanged={refresh}
+        />
+      )}
+
+      {isPemilik && confirmDeleteId && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-cream rounded-card p-5 max-w-xs w-full space-y-4 text-center">
             <p className="text-espresso">Hapus menu ini? Tindakan tidak bisa dibatalkan.</p>

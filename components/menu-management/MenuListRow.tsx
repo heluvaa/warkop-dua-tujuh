@@ -10,10 +10,15 @@ export default function MenuListRow({
   item,
   onEdit,
   onDelete,
+  isPemilik = true,
 }: {
   item: MenuItem;
   onEdit: () => void;
   onDelete: () => void;
+  // Kasir cuma boleh lihat daftar menu (baca-only) — tombol ubah/hapus dan
+  // info margin/HPP (data finansial sensitif, sama seperti Laba Bersih di
+  // Laporan) disembunyikan kalau bukan pemilik.
+  isPemilik?: boolean;
 }) {
   const lowStock = item.stock <= LOW_STOCK_THRESHOLD;
   const hasHpp = !!item.hpp && item.hpp > 0;
@@ -43,32 +48,35 @@ export default function MenuListRow({
         <p className="text-xs text-espresso/50">
           {item.category} · {formatRupiah(item.price)}
         </p>
-        {hasHpp ? (
-          <p className={`text-[11px] mt-0.5 ${margin < 0 ? 'text-brick' : 'text-sage'}`}>
-            Untung {formatRupiah(margin)} ({marginPercent.toFixed(0)}%)
-          </p>
-        ) : (
-          <p className="text-[11px] mt-0.5 text-espresso/30">HPP belum diisi</p>
-        )}
+        {isPemilik &&
+          (hasHpp ? (
+            <p className={`text-[11px] mt-0.5 ${margin < 0 ? 'text-brick' : 'text-sage'}`}>
+              Untung {formatRupiah(margin)} ({marginPercent.toFixed(0)}%)
+            </p>
+          ) : (
+            <p className="text-[11px] mt-0.5 text-espresso/30">HPP belum diisi</p>
+          ))}
       </div>
       <div className="text-right">
         <p className={`text-sm font-semibold ${lowStock ? 'text-brick' : 'text-espresso'}`}>{item.stock}</p>
         <p className="text-[10px] text-espresso/40">stok</p>
       </div>
-      <div className="flex items-center gap-1.5 pl-1">
-        <button
-          onClick={onEdit}
-          className="w-8 h-8 flex items-center justify-center rounded-full bg-cream-dark text-espresso"
-        >
-          <Pencil size={14} />
-        </button>
-        <button
-          onClick={onDelete}
-          className="w-8 h-8 flex items-center justify-center rounded-full bg-brick/10 text-brick"
-        >
-          <Trash2 size={14} />
-        </button>
-      </div>
+      {isPemilik && (
+        <div className="flex items-center gap-1.5 pl-1">
+          <button
+            onClick={onEdit}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-cream-dark text-espresso"
+          >
+            <Pencil size={14} />
+          </button>
+          <button
+            onClick={onDelete}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-brick/10 text-brick"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

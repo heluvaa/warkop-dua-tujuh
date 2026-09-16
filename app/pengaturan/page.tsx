@@ -17,6 +17,7 @@ import {
   Bell,
   Send,
   MessageCircle,
+  Lock,
 } from 'lucide-react';
 import {
   downloadBackup,
@@ -233,6 +234,10 @@ export default function PengaturanPage() {
     daysSinceBackup === null || (typeof daysSinceBackup === 'number' && daysSinceBackup >= BACKUP_REMINDER_DAYS);
 
   async function handleExport() {
+    // File backup berisi SELURUH data termasuk daftar akun kasir & PIN-nya,
+    // jadi cuma pemilik yang boleh unduh — kasir tidak boleh bisa bawa
+    // pulang seluruh data warung lewat sini.
+    if (!isPemilik) return;
     setExporting(true);
     try {
       await downloadBackup();
@@ -793,29 +798,38 @@ export default function PengaturanPage() {
           terutama sebelum ganti HP/laptop atau membersihkan cache browser.
         </p>
 
-        {backupOverdue && (
-          <div className="flex items-start gap-2 bg-brick/10 border border-brick/30 rounded-card px-3.5 py-2.5 mb-3">
-            <AlertTriangle size={16} className="text-brick mt-0.5 shrink-0" />
-            <p className="text-sm text-brick">
-              {daysSinceBackup === null
-                ? 'Belum pernah backup sama sekali.'
-                : `Sudah ${daysSinceBackup} hari sejak backup terakhir.`}{' '}
-              Yuk backup sekarang biar data gak hilang kalau ada apa-apa.
-            </p>
-          </div>
-        )}
-        {!backupOverdue && backupStatusText && (
-          <p className="text-xs text-espresso/50 mb-3">{backupStatusText}</p>
-        )}
+        {isPemilik ? (
+          <>
+            {backupOverdue && (
+              <div className="flex items-start gap-2 bg-brick/10 border border-brick/30 rounded-card px-3.5 py-2.5 mb-3">
+                <AlertTriangle size={16} className="text-brick mt-0.5 shrink-0" />
+                <p className="text-sm text-brick">
+                  {daysSinceBackup === null
+                    ? 'Belum pernah backup sama sekali.'
+                    : `Sudah ${daysSinceBackup} hari sejak backup terakhir.`}{' '}
+                  Yuk backup sekarang biar data gak hilang kalau ada apa-apa.
+                </p>
+              </div>
+            )}
+            {!backupOverdue && backupStatusText && (
+              <p className="text-xs text-espresso/50 mb-3">{backupStatusText}</p>
+            )}
 
-        <button
-          onClick={handleExport}
-          disabled={exporting}
-          className="flex items-center gap-1.5 bg-espresso text-cream rounded-card px-3.5 py-2 text-sm font-medium disabled:opacity-40"
-        >
-          {exporting ? <Loader2 size={16} className="animate-spin" /> : <DownloadCloud size={16} />}
-          Unduh Backup
-        </button>
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="flex items-center gap-1.5 bg-espresso text-cream rounded-card px-3.5 py-2 text-sm font-medium disabled:opacity-40"
+            >
+              {exporting ? <Loader2 size={16} className="animate-spin" /> : <DownloadCloud size={16} />}
+              Unduh Backup
+            </button>
+          </>
+        ) : (
+          <p className="flex items-center gap-1.5 text-sm text-espresso/50 bg-cream rounded-card px-3.5 py-2.5 border border-cream-dark">
+            <Lock size={14} className="shrink-0" />
+            Cuma pemilik yang bisa mengunduh backup (berisi seluruh data & akun kasir).
+          </p>
+        )}
       </section>
 
       {/* Restore / Import */}

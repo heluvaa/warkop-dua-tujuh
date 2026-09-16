@@ -45,6 +45,34 @@ export async function deleteMenuItem(id: string): Promise<void> {
   );
 }
 
+// Kategori tidak disimpan sebagai entitas terpisah — cuma teks bebas di
+// tiap MenuItem, daftar "kategori yang ada" (existingCategories di
+// app/menu/page.tsx) selalu diturunkan dari nilai unik yang lagi dipakai
+// menu. Konsekuensinya: "edit nama kategori" dan "hapus kategori" sama-sama
+// cukup dikerjakan dengan mengganti nilai category di semua menu yang
+// memakainya — begitu tidak ada menu lagi yang pakai nama lama, kategori
+// itu otomatis hilang dari daftar tanpa perlu langkah "hapus" terpisah.
+//
+// - Rename: renameCategory(from, to) dengan `to` nama baru yang belum ada.
+// - Delete: renameCategory(from, to) dengan `to` = kategori LAIN yang sudah
+//   ada (menu-menunya dipindah ke situ) — lihat CategoryManagerModal.
+// Kalau `to` kebetulan sama dengan kategori lain yang sudah ada, otomatis
+// tergabung ke situ (dipakai juga oleh alur delete-dengan-pindah).
+export async function renameCategory(from: string, to: string): Promise<number> {
+  const trimmedTo = to.trim();
+  if (!trimmedTo || trimmedTo === from) return 0;
+
+  const all = await getAllMenu();
+  let count = 0;
+  const updated = all.map((m) => {
+    if (m.category !== from) return m;
+    count += 1;
+    return { ...m, category: trimmedTo };
+  });
+  if (count > 0) await setItem(STORAGE_KEYS.MENU, updated);
+  return count;
+}
+
 export async function decrementStock(id: string, qty: number): Promise<void> {
   const all = await getAllMenu();
   const updated = all.map((m) => (m.id === id ? { ...m, stock: Math.max(0, m.stock - qty) } : m));

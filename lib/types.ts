@@ -1,6 +1,6 @@
-// Satu opsi ukuran atau level gula/es — priceDelta ditambahkan ke harga
-// dasar menu kalau opsi ini dipilih (boleh 0, mis. ukuran "Regular" yang
-// harganya sama dengan harga dasar).
+// Satu opsi ukuran, rasa, atau panas/dingin — priceDelta ditambahkan ke
+// harga dasar menu kalau opsi ini dipilih (boleh 0, mis. ukuran "Regular"
+// yang harganya sama dengan harga dasar).
 export interface MenuVariantOption {
   id: string;
   name: string;
@@ -23,7 +23,14 @@ export interface MenuToppingOption {
 // langsung masuk keranjang, tanpa dialog pilihan).
 export interface MenuVariantConfig {
   sizes?: MenuVariantOption[];
-  sugarIceLevels?: MenuVariantOption[];
+  // Rasa (mis. Original, Vanilla, Caramel) — pilih salah satu, sama seperti
+  // Ukuran.
+  flavors?: MenuVariantOption[];
+  // Sebelumnya "Level Gula/Es" (bebas ketik nama level apa saja); sekarang
+  // dipakai khusus untuk Panas/Dingin. Tetap daftar bebas (bukan cuma 2
+  // opsi hardcode) supaya pemilik warung tetap bisa menamai sendiri kalau
+  // perlu variasi lain (mis. "Dingin - Es Sedikit").
+  hotCold?: MenuVariantOption[];
   toppings?: MenuToppingOption[];
 }
 
@@ -39,8 +46,8 @@ export interface MenuItem {
   stock: number;
   imageUrl?: string;
   isFavorite?: boolean;
-  // Pilihan varian (ukuran, level gula/es, topping) yang bisa dipilih kasir
-  // saat menambahkan menu ini ke keranjang — lihat MenuVariantConfig.
+  // Pilihan varian (ukuran, rasa, panas/dingin, topping) yang bisa dipilih
+  // kasir saat menambahkan menu ini ke keranjang — lihat MenuVariantConfig.
   // Opsional sepenuhnya: menu lama tanpa field ini tetap valid.
   variants?: MenuVariantConfig;
   createdAt: string;
@@ -54,7 +61,8 @@ export interface MenuItem {
 // berubah.
 export interface SelectedVariant {
   size?: { name: string; priceDelta: number };
-  sugarIce?: { name: string; priceDelta: number };
+  flavor?: { name: string; priceDelta: number };
+  hotCold?: { name: string; priceDelta: number };
   toppings?: { name: string; price: number }[];
 }
 
