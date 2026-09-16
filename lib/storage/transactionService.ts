@@ -58,7 +58,15 @@ export async function createTransaction(
         `🛒 <b>Transaksi Baru</b>${newTx.operatorName ? ` — ${newTx.operatorName}` : ''}\n` +
           `${itemLines}\n` +
           `Total: ${formatRupiah(newTx.total)} (${metode})` +
-          bayarLines
+          bayarLines,
+        // 'pos' (checkout langsung di Kasir) selalu diikuti ReceiptModal,
+        // yang begitu tampil langsung mengirim SATU pesan Telegram foto
+        // struk + caption lengkap (lihat components/pos/ReceiptModal.tsx) —
+        // jadi teks Telegram di sini dimatikan supaya tidak jadi dua pesan
+        // per transaksi seperti sebelumnya. 'pending_paid' (pelunasan dari
+        // halaman Belum Bayar) tidak lewat ReceiptModal sama sekali, jadi
+        // tetap kirim teks seperti biasa di semua channel yang aktif.
+        newTx.source === 'pos' ? { telegram: false } : undefined
       );
     }
   }

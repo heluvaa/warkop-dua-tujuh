@@ -13,14 +13,25 @@ import { sendTelegramNotification } from './telegram';
 import { sendWhatsappNotification } from './whatsapp';
 import { getSettings } from './storage/settingsService';
 
-export async function sendNotification(message: string): Promise<boolean> {
+export async function sendNotification(
+  message: string,
+  options?: {
+    // Set false untuk melewati channel Telegram TEKS — dipakai transaksi
+    // Kasir (source 'pos'), yang Telegram-nya sudah dapat foto struk +
+    // caption lengkap otomatis dari ReceiptModal (lihat
+    // components/pos/ReceiptModal.tsx), supaya tidak dobel jadi dua pesan
+    // Telegram per transaksi. WhatsApp tidak punya alur foto itu, jadi tetap
+    // dikirim teks seperti biasa kalau channel-nya aktif.
+    telegram?: boolean;
+  }
+): Promise<boolean> {
   const settings = await getSettings();
 
   const jobs: Promise<boolean>[] = [];
 
   // Default tetap nyala kalau belum pernah diatur (kompatibel dengan
   // instalasi lama yang cuma pakai Telegram, sebelum field ini ada).
-  if (settings.telegramChannelEnabled !== false) {
+  if (options?.telegram !== false && settings.telegramChannelEnabled !== false) {
     jobs.push(sendTelegramNotification(message));
   }
   if (settings.whatsappChannelEnabled) {

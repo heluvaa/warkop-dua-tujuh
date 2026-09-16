@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Check, NotebookPen, Share2, Send, Loader2, CheckCircle2, XCircle } from 'lucide-react';
-import type { CartItem, CheckoutMethod, SplitPaymentDetail } from '@/lib/types';
-import { formatRupiah } from '@/lib/utils/format';
+import type { CartItem, CheckoutMethod, PaymentMethod, SplitPaymentDetail } from '@/lib/types';
+import { formatRupiah, paymentMethodLabel } from '@/lib/utils/format';
 import { formatSelectedVariantLabel } from '@/lib/utils/variant';
 import { GOOGLE_REVIEW_URL } from '@/lib/constants';
 import { renderReceiptToCanvas, canvasToBlob } from '@/lib/utils/receiptCanvas';
 import { sendTelegramPhoto } from '@/lib/telegram';
+import { getSettings } from '@/lib/storage/settingsService';
 
 export default function ReceiptModal({
   items,
@@ -40,6 +41,65 @@ export default function ReceiptModal({
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
   const [sendPhotoState, setSendPhotoState] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [sendPhotoError, setSendPhotoError] = useState<string | null>(null);
+  // Penjaga supaya foto struk otomatis cuma terkirim SEKALI per modal
+  // (bukan setiap re-render, dan bukan dua kali kalau efek mount sempat
+  // terpanggil dua kali di React Strict Mode saat development).
+  const autoSendAttemptedRef = useRef(false);
+
+  // Caption lengkap (item, total, metode, rincian bayar) untuk transaksi yang
+  // SUDAH dibayar — menggantikan pesan teks "Transaksi Baru" yang dulu
+  // dikirim terpisah dari lib/storage/transactionService.ts, supaya
+  // pemilik warung cukup dapat SATU pesan Telegram per transaksi: foto
+  // struk dengan caption ini, bukan dua pesan yang isinya tumpang tindih
+  // (lihat juga guard { telegram: false } di transactionService.ts).
+  function buildTelegramCaption(): string {
+    const itemLines = items
+      .map(({ menuItem, quantity, note, variant }) => {
+        const variantLabel = formatSelectedVariantLabel(variant);
+        return `- ${menuItem.name}${variantLabel ? ` (${variantLabel})` : ''} x${quantity}${
+          note ? ` (${note})` : ''
+        }`;
+      })
+      .join('\n');
+    const paymentMethod = method as PaymentMethod; // dijamin bukan 'belum_bayar' oleh pemanggil
+    const metode = paymentMethodLabel(paymentMethod);
+    const bayarLines =
+      paymentMethod === 'cash' && cashReceived !== undefined
+        ? `\nBayar: ${formatRupiah(cashReceived)}\nKembali: ${formatRupiah(change ?? 0)}`
+        : paymentMethod === 'split' && splitDetail
+          ? `\nCash: ${formatRupiah(splitDetail.cash)} · QRIS: ${formatRupiah(splitDetail.qris)}` +
+            (splitDetail.kasbon > 0 ? `\nSisa Kasbon: ${formatRupiah(splitDetail.kasbon)}` : '')
+          : '';
+    return (
+      `🧾 <b>Transaksi Baru</b>${operatorName ? ` — ${operatorName}` : ''}\n` +
+      (customerName ? `Atas nama: ${customerName}\n` : '') +
+      `${itemLines}\n` +
+      `Total: ${formatRupiah(total)} (${metode})` +
+      bayarLines
+    );
+  }
+
+  async function sendReceiptPhoto(): Promise<boolean> {
+    if (!receiptCanvasRef.current) return false;
+    setSendPhotoState('sending');
+    setSendPhotoError(null);
+    try {
+      const blob = await canvasToBlob(receiptCanvasRef.current);
+      if (!blob) throw new Error('Gagal membuat gambar struk.');
+      const caption = belumBayar
+        ? `🧾 <b>Struk${customerName ? ` — ${customerName}` : ''}</b>\n` +
+          `Total: ${formatRupiah(total)}\nStatus: Belum Dibayar`
+        : buildTelegramCaption();
+      const ok = await sendTelegramPhoto(blob, caption);
+      if (!ok) throw new Error('Telegram menolak pengiriman gambar struk.');
+      setSendPhotoState('success');
+      return true;
+    } catch (err) {
+      setSendPhotoState('error');
+      setSendPhotoError(err instanceof Error ? err.message : 'Gagal mengirim gambar struk.');
+      return false;
+    }
+  }
 
   // Gambar struk sekali saat modal dibuka — data transaksi sudah final di
   // titik ini jadi tidak perlu digambar ulang. Dipakai untuk preview (foto
@@ -64,27 +124,27 @@ export default function ReceiptModal({
       createdAt,
     });
     setReceiptPreviewUrl(receiptCanvasRef.current.toDataURL('image/png'));
+
+    // Auto-kirim foto struk + caption lengkap ke Telegram begitu transaksi
+    // yang SUDAH dibayar (cash/QRIS/split) selesai dicatat. Pesanan "Belum
+    // Bayar" sengaja TIDAK di-auto-kirim di sini — belum ada uang yang
+    // diterima, dan sudah ada notifikasi teks "Pesanan Belum Dibayar"
+    // tersendiri dari pendingOrderService.ts, jadi kasir masih perlu pakai
+    // tombol kirim manual kalau memang mau membagikan foto strukunya juga.
+    if (!belumBayar && !autoSendAttemptedRef.current) {
+      autoSendAttemptedRef.current = true;
+      (async () => {
+        const settings = await getSettings();
+        if (settings.transactionNotifyEnabled && settings.telegramChannelEnabled !== false) {
+          await sendReceiptPhoto();
+        }
+      })();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleSendReceiptPhoto() {
-    if (!receiptCanvasRef.current) return;
-    setSendPhotoState('sending');
-    setSendPhotoError(null);
-    try {
-      const blob = await canvasToBlob(receiptCanvasRef.current);
-      if (!blob) throw new Error('Gagal membuat gambar struk.');
-      const caption =
-        `🧾 <b>Struk${customerName ? ` — ${customerName}` : ''}</b>\n` +
-        `Total: ${formatRupiah(total)}` +
-        (belumBayar ? '\nStatus: Belum Dibayar' : '');
-      const ok = await sendTelegramPhoto(blob, caption);
-      if (!ok) throw new Error('Telegram menolak pengiriman gambar struk.');
-      setSendPhotoState('success');
-    } catch (err) {
-      setSendPhotoState('error');
-      setSendPhotoError(err instanceof Error ? err.message : 'Gagal mengirim gambar struk.');
-    }
+    await sendReceiptPhoto();
   }
 
   // Teks struk versi ringkas untuk dibagikan lewat WhatsApp — formatnya
@@ -276,11 +336,16 @@ export default function ReceiptModal({
           ) : (
             <Send size={18} />
           )}
-          Kirim Gambar Struk ke Telegram
+          {belumBayar
+            ? 'Kirim Gambar Struk ke Telegram'
+            : sendPhotoState === 'success' || sendPhotoState === 'sending'
+              ? 'Kirim Ulang ke Telegram'
+              : 'Kirim Gambar Struk ke Telegram'}
         </button>
         {sendPhotoState === 'success' && (
           <p className="flex items-center justify-center gap-1.5 text-sm text-sage -mt-2">
-            <CheckCircle2 size={16} /> Gambar struk terkirim, cek Telegram.
+            <CheckCircle2 size={16} />
+            {belumBayar ? 'Gambar struk terkirim, cek Telegram.' : 'Terkirim otomatis ke Telegram, cek chat bot.'}
           </p>
         )}
         {sendPhotoState === 'error' && (
