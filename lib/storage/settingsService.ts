@@ -16,6 +16,13 @@ export interface AppSettings {
   pendingOrderNotifyEnabled: boolean;
   // Transaksi dibatalkan (void) — penanda keamanan/audit sederhana.
   voidNotifyEnabled: boolean;
+  // Rekap omzet harian otomatis, dikirim server (cron) tepat saat pergantian
+  // hari WIB — lihat app/api/cron/rekap-harian/route.ts. Beda dari toggle
+  // lain di file ini: field ini dibaca dari SERVER (bukan cuma browser),
+  // jadi cuma berlaku kalau Supabase sudah dikonfigurasi (lihat catatan di
+  // route tersebut) — kalau masih localStorage-only, cron tidak bisa
+  // membaca data ini sama sekali.
+  dailyRecapNotifyEnabled: boolean;
   // Pengeluaran dengan nominal besar (>= EXPENSE_NOTIFY_THRESHOLD).
   expenseNotifyEnabled: boolean;
   // Kasir buka/tutup shift (pilih nama & PIN / "Ganti Kasir").
@@ -51,7 +58,11 @@ export interface AppSettings {
   whatsappChannelEnabled: boolean;
 }
 
-const DEFAULT_SETTINGS: AppSettings = {
+// Diekspor (bukan cuma dipakai internal lewat getSettings) supaya kode
+// SERVER yang membaca settings langsung dari Supabase tanpa lewat getItem
+// (mis. app/api/cron/rekap-harian/route.ts, lihat lib/storage/serverKv.ts)
+// tetap dapat nilai default yang konsisten, bukan menulis ulang daftar ini.
+export const DEFAULT_SETTINGS: AppSettings = {
   lowStockNotifyEnabled: true,
   kasbonOverdueNotifyEnabled: true,
   transactionNotifyEnabled: true,
@@ -59,6 +70,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   kasbonPaidNotifyEnabled: true,
   pendingOrderNotifyEnabled: true,
   voidNotifyEnabled: true,
+  dailyRecapNotifyEnabled: true,
   expenseNotifyEnabled: true,
   shiftNotifyEnabled: true,
   shiftCashNotifyEnabled: true,

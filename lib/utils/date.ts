@@ -45,3 +45,31 @@ export function daysSince(iso: string): number {
   const ms = Date.now() - new Date(iso).getTime();
   return Math.floor(ms / (1000 * 60 * 60 * 24));
 }
+
+// --- Helper KHUSUS zona waktu WIB (Asia/Jakarta), untuk konteks SERVER ----
+//
+// toDateKey/todayDateKey di atas sengaja pakai getFullYear/getMonth/getDate
+// (zona waktu LOKAL runtime JS) — itu benar untuk kode yang jalan di
+// browser kasir (device-nya memang di WIB). Tapi untuk kode yang jalan di
+// SERVER (mis. cron job rekap harian di app/api/cron/rekap-harian/route.ts),
+// zona waktu runtime server BELUM TENTU WIB (Vercel misalnya default UTC) —
+// pakai toDateKey di server bisa salah tanggal beberapa jam menjelang &
+// sesudah tengah malam. Dua fungsi di bawah ini tidak bergantung sama
+// sekali pada zona waktu runtime (selalu dihitung eksplisit sebagai UTC+7,
+// Asia/Jakarta tidak kenal DST jadi offsetnya tetap), aman dipakai di server
+// maupun browser.
+const JAKARTA_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+export function toJakartaDateKey(date: Date): string {
+  const shifted = new Date(date.getTime() + JAKARTA_OFFSET_MS);
+  const y = shifted.getUTCFullYear();
+  const m = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(shifted.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// dateKey (WIB) dari hari yang BARU SAJA berakhir — dipakai cron rekap
+// harian yang jalan tepat saat pergantian hari (00:00 WIB).
+export function yesterdayJakartaDateKey(): string {
+  return toJakartaDateKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
+}

@@ -128,6 +128,12 @@ export const STORAGE_KEYS = {
   // ACTIVE_OPERATOR: ini data warung (dibagi lewat Supabase kalau ada),
   // bukan status per-device.
   SHIFTS: 'warkop27_shifts',
+  // Riwayat login/logout kasir (audit trail) — lihat LoginLogEntry di
+  // lib/types.ts. Beda dari ACTIVE_OPERATOR: ini data warung (dibagi lewat
+  // Supabase kalau ada), bukan status per-device, dan tidak pernah
+  // ditimpa — hanya ditambah (append-only) sampai dipangkas otomatis di
+  // operatorService.ts.
+  LOGIN_LOGS: 'warkop27_login_logs',
   LAST_BACKUP_AT: 'warkop27_last_backup_at',
   // Daftar ID menu yang sudah dikirim notifikasi "stok menipis"-nya, supaya
   // tidak kirim ulang tiap kali ada transaksi baru. Direset (ID dilepas dari

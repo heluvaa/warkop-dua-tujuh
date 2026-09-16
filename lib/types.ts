@@ -247,6 +247,21 @@ export interface Operator {
   createdAt: string;
 }
 
+// Satu baris riwayat login/logout kasir — murni catatan (audit trail)
+// "siapa pegang HP kapan", terpisah dari ACTIVE_OPERATOR (status login
+// SAAT INI, per-device) dan dari ShiftEntry (laci kas). Log ini data
+// warung (disimpan lewat getItem/setItem, ikut Supabase kalau ada) supaya
+// pemilik bisa lihat riwayatnya dari device manapun.
+export type LoginLogAction = 'login' | 'logout';
+
+export interface LoginLogEntry {
+  id: string;
+  operatorId: string;
+  operatorName: string;
+  action: LoginLogAction;
+  at: string;
+}
+
 export type ShiftStatus = 'open' | 'closed';
 
 // Satu sesi shift laci kas — beda dari "sesi login kasir" di operatorService

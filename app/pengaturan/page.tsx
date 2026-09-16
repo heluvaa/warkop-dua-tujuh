@@ -32,6 +32,7 @@ import type { Operator, OperatorRole } from '@/lib/types';
 import ThemeToggle from '@/components/theme/ThemeToggle';
 import OperatorFormModal from '@/components/pengaturan/OperatorFormModal';
 import QrisSettingsSection from '@/components/pengaturan/QrisSettingsSection';
+import LoginLogSection from '@/components/pengaturan/LoginLogSection';
 import { useIsPemilik } from '@/lib/context/OperatorSessionContext';
 
 type RestoreState = 'idle' | 'confirming' | 'restoring' | 'success' | 'error';
@@ -51,6 +52,7 @@ export default function PengaturanPage() {
   const [kasbonPaidNotifyEnabled, setKasbonPaidNotifyEnabled] = useState(true);
   const [pendingOrderNotifyEnabled, setPendingOrderNotifyEnabled] = useState(true);
   const [voidNotifyEnabled, setVoidNotifyEnabled] = useState(true);
+  const [dailyRecapNotifyEnabled, setDailyRecapNotifyEnabled] = useState(true);
   const [expenseNotifyEnabled, setExpenseNotifyEnabled] = useState(true);
   const [shiftNotifyEnabled, setShiftNotifyEnabled] = useState(true);
   const [shiftCashNotifyEnabled, setShiftCashNotifyEnabled] = useState(true);
@@ -87,6 +89,7 @@ export default function PengaturanPage() {
       setKasbonPaidNotifyEnabled(settings.kasbonPaidNotifyEnabled);
       setPendingOrderNotifyEnabled(settings.pendingOrderNotifyEnabled);
       setVoidNotifyEnabled(settings.voidNotifyEnabled);
+      setDailyRecapNotifyEnabled(settings.dailyRecapNotifyEnabled);
       setExpenseNotifyEnabled(settings.expenseNotifyEnabled);
       setShiftNotifyEnabled(settings.shiftNotifyEnabled);
       setShiftCashNotifyEnabled(settings.shiftCashNotifyEnabled);
@@ -148,6 +151,12 @@ export default function PengaturanPage() {
     const next = !voidNotifyEnabled;
     setVoidNotifyEnabled(next); // optimistic
     await updateSettings({ voidNotifyEnabled: next });
+  }
+
+  async function handleToggleDailyRecapNotify() {
+    const next = !dailyRecapNotifyEnabled;
+    setDailyRecapNotifyEnabled(next); // optimistic
+    await updateSettings({ dailyRecapNotifyEnabled: next });
   }
 
   async function handleToggleExpenseNotify() {
@@ -583,6 +592,30 @@ export default function PengaturanPage() {
 
         <div className="flex items-center justify-between gap-3 py-2 border-b border-cream-dark">
           <div>
+            <p className="text-sm text-espresso font-medium">Rekap Harian Otomatis</p>
+            <p className="text-xs text-espresso/60">
+              Kirim ringkasan omzet & laba hari sebelumnya otomatis tiap pergantian hari (00:00),
+              tanpa perlu buka aplikasi. Butuh Supabase aktif — lihat README.
+            </p>
+          </div>
+          <button
+            onClick={handleToggleDailyRecapNotify}
+            role="switch"
+            aria-checked={dailyRecapNotifyEnabled}
+            className={`relative w-11 h-6 rounded-full shrink-0 transition-colors ${
+              dailyRecapNotifyEnabled ? 'bg-espresso' : 'bg-cream-dark'
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-cream transition-transform ${
+                dailyRecapNotifyEnabled ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 py-2 border-b border-cream-dark">
+          <div>
             <p className="text-sm text-espresso font-medium">Pengeluaran Besar</p>
             <p className="text-xs text-espresso/60">
               Kirim pesan untuk pengeluaran ≥ {formatRupiah(EXPENSE_NOTIFY_THRESHOLD)}.
@@ -745,6 +778,8 @@ export default function PengaturanPage() {
           </div>
         )}
       </section>
+
+      <LoginLogSection isPemilik={isPemilik} />
 
       {/* Backup / Export */}
       <section className="bg-surface rounded-card border border-cream-dark p-4 mb-4">

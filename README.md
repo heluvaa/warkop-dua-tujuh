@@ -151,6 +151,48 @@ WHATSAPP_TARGET=628xxxxxxxxxx
 Token & Phone Number ID didapat dari dashboard **Meta for Developers** →
 app WhatsApp Business milik warkop.
 
+## Rekap Harian Otomatis
+
+Beda dari perintah `/omzet` di chat Telegram (yang cuma bisa dijawab kalau
+ada tab aplikasi kasir sedang terbuka, karena datanya baru bisa dibaca di
+situ — lihat catatan di `lib/telegramCommands.ts`), rekap ini dikirim
+sendiri oleh **server**, jadi tetap jalan meski tidak ada satu pun HP/laptop
+kasir yang menyala.
+
+**Syarat wajib: Supabase harus sudah dikonfigurasi** (lihat bagian "Pindah
+ke Supabase" di atas). Server tidak punya cara membaca `localStorage`
+browser kasir, jadi kalau masih pakai localStorage-only, fitur ini tidak
+bisa jalan sama sekali — bukan soal setup env yang kurang, tapi keterbatasan
+arsitektur (data memang cuma ada di device).
+
+Endpoint-nya: `GET /api/cron/rekap-harian` (lihat
+`app/api/cron/rekap-harian/route.ts`). Endpoint ini murni HTTP biasa —
+tidak terikat ke platform hosting tertentu — tinggal dipicu terjadwal
+lewat salah satu cara berikut:
+
+- **Cron eksternal gratis (paling gampang, cocok untuk deploy Netlify)** —
+  daftar di [cron-job.org](https://cron-job.org), buat job baru yang
+  memanggil `https://domain-warkop-kamu/api/cron/rekap-harian` tiap jam
+  **17:00 UTC** (= 00:00 WIB) setiap hari, dengan header
+  `Authorization: Bearer <isi CRON_SECRET kamu>`.
+- **Vercel Cron** — kalau deploy ke Vercel, `vercel.json` di root project
+  ini sudah berisi jadwalnya, tinggal isi env var `CRON_SECRET` di dashboard
+  Vercel (otomatis dikirim sebagai header oleh Vercel, tidak perlu setup
+  tambahan).
+- **GitHub Actions** — bikin workflow terjadwal (`schedule: cron: '0 17 * * *'`)
+  yang isinya cuma satu langkah `curl` ke endpoint di atas.
+
+`CRON_SECRET` di `.env.local` (lihat `.env.local.example`) mencegah orang
+lain memicu endpoint ini sembarangan — kalau dikosongkan, endpoint tetap
+jalan tanpa cek apa pun (memudahkan coba-coba lokal), tapi tidak disarankan
+untuk production.
+
+Isinya: jumlah transaksi, total Cash, total QRIS, total pemasukan,
+pengeluaran, laba bersih, dan 3 menu terlaris — semua untuk hari yang BARU
+SAJA berakhir (WIB), dikirim ke channel yang aktif (Telegram/WhatsApp,
+sama seperti toggle Channel Notifikasi lainnya). Bisa dimatikan lewat
+toggle **"Rekap Harian Otomatis"** di halaman Pengaturan.
+
 ## Panduan Halaman Pengaturan
 
 Halaman **Pengaturan** (`/pengaturan`) berisi 5 bagian. Beberapa aksi
@@ -188,6 +230,7 @@ menentukan ke mana notifikasi itu diteruskan:
 | Buka/Tutup Shift | Kasir pilih nama & PIN, atau tekan "Ganti Kasir" |
 | Buka/Tutup Shift Kas | Berisi modal awal saat shift dibuka, dan kas sistem/fisik/selisih saat shift ditutup |
 | Perintah Bot | Mengaktifkan/menonaktifkan balasan otomatis `/omzet`, `/stok`, `/kasbon`, `/help` dari Telegram |
+| Rekap Harian Otomatis | Ringkasan omzet & laba hari sebelumnya, terkirim sendiri tiap pergantian hari (00:00 WIB) — lihat bagian "Rekap Harian Otomatis" di atas, **butuh Supabase aktif** |
 
 ### 4. QRIS
 Simpan kode QRIS statis (bisa ketik manual atau upload foto/scan QR) supaya

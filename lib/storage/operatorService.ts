@@ -5,7 +5,7 @@
  */
 
 import { getItem, setItem, getLocalItem, setLocalItem, generateId, STORAGE_KEYS } from './db';
-import type { Operator, OperatorRole } from '../types';
+import type { Operator, OperatorRole, LoginLogEntry, LoginLogAction } from '../types';
 import { todayDateKey } from '../utils/date';
 import { formatTime } from '../utils/format';
 import { sendNotification } from '../notify';
@@ -95,6 +95,7 @@ export async function setActiveOperator(operator: Operator): Promise<void> {
     dateKey: todayDateKey(),
   };
   setLocalItem(STORAGE_KEYS.ACTIVE_OPERATOR, session);
+  await recordLoginLog(operator.id, operator.name, 'login');
 
   const settings = await getSettings();
   if (settings.shiftNotifyEnabled) {
@@ -111,6 +112,8 @@ export async function clearActiveOperator(): Promise<void> {
   setLocalItem(STORAGE_KEYS.ACTIVE_OPERATOR, null);
 
   if (session) {
+    await recordLoginLog(session.operatorId, session.operatorName, 'logout');
+
     const settings = await getSettings();
     if (settings.shiftNotifyEnabled) {
       await sendNotification(
@@ -118,4 +121,48 @@ export async function clearActiveOperator(): Promise<void> {
       );
     }
   }
+}
+
+// Jumlah maksimum baris log yang disimpan — dipangkas dari yang paling
+// lama supaya key ini tidak tumbuh tanpa batas (log ini murni catatan,
+// bukan data yang wajib lengkap selamanya seperti transaksi).
+const MAX_LOGIN_LOG_ENTRIES = 500;
+
+async function getAllLoginLogs(): Promise<LoginLogEntry[]> {
+  return getItem<LoginLogEntry[]>(STORAGE_KEYS.LOGIN_LOGS, []);
+}
+
+// Dipanggil dari setActiveOperator (login) & clearActiveOperator (logout)
+// di atas — bukan API publik untuk dipanggil langsung dari luar, supaya
+// satu-satunya jalan masuk log ini tetap lewat aksi login/logout beneran.
+async function recordLoginLog(
+  operatorId: string,
+  operatorName: string,
+  action: LoginLogAction
+): Promise<void> {
+  const all = await getAllLoginLogs();
+  const entry: LoginLogEntry = {
+    id: generateId('log'),
+    operatorId,
+    operatorName,
+    action,
+    at: new Date().toISOString(),
+  };
+  // Simpan yang terbaru duluan (mempermudah tampilan) & pangkas dari
+  // ekor (yang paling lama) kalau sudah lewat batas.
+  const next = [entry, ...all].slice(0, MAX_LOGIN_LOG_ENTRIES);
+  await setItem(STORAGE_KEYS.LOGIN_LOGS, next);
+}
+
+// API publik untuk halaman Pengaturan — sudah terurut terbaru-duluan.
+// `limit` opsional untuk membatasi berapa baris yang ditarik/ditampilkan.
+export async function getLoginLogs(limit?: number): Promise<LoginLogEntry[]> {
+  const all = await getAllLoginLogs();
+  return typeof limit === 'number' ? all.slice(0, limit) : all;
+}
+
+// Dipakai tombol "Hapus Riwayat" di Pengaturan — cuma pemilik yang boleh
+// (pengecekan role dilakukan di pemanggil/UI, bukan di sini).
+export async function clearLoginLogs(): Promise<void> {
+  await setItem(STORAGE_KEYS.LOGIN_LOGS, []);
 }
