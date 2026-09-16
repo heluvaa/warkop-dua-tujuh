@@ -6,9 +6,18 @@
  *
  * Beda dari "sesi login kasir" di operatorService.ts: shift di sini adalah
  * data WARUNG (ikut Supabase kalau sudah dikonfigurasi, dibagi ke semua
- * device), bukan status per-device. Satu shift bisa dipakai bergantian oleh
- * beberapa kasir (ganti kasir di tengah hari tidak otomatis tutup shift) —
- * lihat komentar di ShiftEntry pada lib/types.ts.
+ * device), bukan status per-device.
+ *
+ * PER-OPERATOR: tiap akun kasir punya shift & modal awalnya sendiri —
+ * bisa ada BEBERAPA shift 'open' bersamaan (satu per operator yang lagi
+ * jaga), bukan cuma satu laci bersama untuk seluruh warung. Shift operator A
+ * tetap 'open' terus (modal awal tidak ditanya ulang) selama A belum tutup
+ * shift-nya sendiri, walau A logout lalu login lagi. Operator lain (B) yang
+ * login akan dapat OpenShiftModal miliknya sendiri kalau B belum punya shift
+ * 'open'. Konsekuensinya: getShiftCashSummary() HARUS ikut memfilter
+ * transaksi/pengeluaran berdasarkan operatorName shift ini (bukan cuma
+ * rentang waktu), supaya penjualan operator lain yang shift-nya kebetulan
+ * tumpang tindih waktu tidak ikut kehitung dobel di kedua shift.
  */
 
 import { getItem, setItem, generateId, STORAGE_KEYS } from './db';
@@ -37,11 +46,21 @@ export async function getShiftHistory(): Promise<ShiftEntry[]> {
   return [...all].sort((a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime());
 }
 
-// Hanya ada maksimal SATU shift yang statusnya 'open' di satu waktu —
-// mewakili satu laci kas yang sedang dipakai jualan.
-export async function getActiveShift(): Promise<ShiftEntry | null> {
+// Shift 'open' MILIK operator ini (kalau ada). Bisa ada shift 'open' lain
+// punya operator berbeda di saat yang sama — itu bukan urusan operator ini,
+// makanya dicari berdasarkan operatorId, bukan sekadar status === 'open'.
+export async function getActiveShift(operatorId: string): Promise<ShiftEntry | null> {
+  if (!operatorId) return null;
   const all = await getAllShifts();
-  return all.find((s) => s.status === 'open') ?? null;
+  return all.find((s) => s.status === 'open' && s.operatorId === operatorId) ?? null;
+}
+
+// Semua shift 'open' saat ini, dari semua operator — dipakai kalau ada
+// tampilan ringkasan lintas-kasir (mis. pemilik mau lihat semua laci yang
+// lagi jalan bersamaan).
+export async function getAllActiveShifts(): Promise<ShiftEntry[]> {
+  const all = await getAllShifts();
+  return all.filter((s) => s.status === 'open');
 }
 
 export async function openShift(data: {
@@ -50,8 +69,10 @@ export async function openShift(data: {
   modalAwal: number;
 }): Promise<ShiftEntry> {
   // Jaga-jaga kalau tombol dipencet dobel / dipanggil ulang — jangan sampai
-  // ada dua shift 'open' bersamaan, kembalikan yang sudah ada saja.
-  const existing = await getActiveShift();
+  // operator yang sama punya dua shift 'open' bersamaan, kembalikan yang
+  // sudah ada saja. Operator LAIN yang shift-nya kebetulan masih 'open'
+  // tidak menghalangi operator ini buka shift barunya sendiri.
+  const existing = await getActiveShift(data.operatorId);
   if (existing) return existing;
 
   const all = await getAllShifts();
@@ -81,12 +102,18 @@ export interface ShiftCashSummary {
   systemCash: number;
 }
 
-// Hitung ringkasan kas suatu shift dari transaksi & pengeluaran yang
-// terjadi selama openedAt..until (default: sekarang). Dipakai baik untuk
-// pratinjau LIVE saat kasir masih menghitung uang fisik (belum ditutup),
-// maupun untuk snapshot final saat closeShift() dipanggil.
+// Hitung ringkasan kas suatu shift dari transaksi & pengeluaran milik
+// OPERATOR shift ini yang terjadi selama openedAt..until (default:
+// sekarang). Dipakai baik untuk pratinjau LIVE saat kasir masih menghitung
+// uang fisik (belum ditutup), maupun untuk snapshot final saat closeShift()
+// dipanggil.
+//
+// Difilter juga berdasarkan operatorName (bukan cuma rentang waktu) karena
+// sekarang bisa ada beberapa shift 'open' bersamaan (satu per operator) —
+// tanpa filter ini, transaksi kasir lain yang shift-nya kebetulan tumpang
+// tindih waktu akan ikut kehitung dobel di shift ini.
 export async function getShiftCashSummary(
-  shift: Pick<ShiftEntry, 'openedAt' | 'modalAwal'>,
+  shift: Pick<ShiftEntry, 'openedAt' | 'modalAwal' | 'operatorName'>,
   until: Date = new Date()
 ): Promise<ShiftCashSummary> {
   const openedAtMs = new Date(shift.openedAt).getTime();
@@ -99,10 +126,12 @@ export async function getShiftCashSummary(
 
   const txInWindow = allTransactions.filter((t) => {
     if (t.voided) return false;
+    if (t.operatorName !== shift.operatorName) return false;
     const ms = new Date(t.createdAt).getTime();
     return ms >= openedAtMs && ms <= untilMs;
   });
   const pengeluaranInWindow = allPengeluaran.filter((e) => {
+    if (e.operatorName !== shift.operatorName) return false;
     const ms = new Date(e.createdAt).getTime();
     return ms >= openedAtMs && ms <= untilMs;
   });

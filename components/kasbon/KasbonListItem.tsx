@@ -1,42 +1,30 @@
 'use client';
 
-import { useState } from 'react';
 import type { KasbonEntry } from '@/lib/types';
 import { formatRupiah, formatDateTime, formatItemLabel } from '@/lib/utils/format';
 import { daysSince } from '@/lib/utils/date';
 import { KASBON_OVERDUE_DAYS } from '@/lib/constants';
+import { getKasbonAmountPaid } from '@/lib/storage/kasbonService';
 import { AlertTriangle, Pencil, Trash2 } from 'lucide-react';
 
 export default function KasbonListItem({
   entry,
-  onLunasi,
+  onBayar,
   onEdit,
   onDelete,
 }: {
   entry: KasbonEntry;
-  onLunasi: () => void | Promise<void>;
+  onBayar: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
   const lunas = entry.status === 'lunas';
   const umurHari = daysSince(entry.createdAt);
   const overdue = !lunas && umurHari >= KASBON_OVERDUE_DAYS;
-  // Cegah tombol "Lunasi" kepencet dua kali dengan cepat — sekali diproses,
-  // dikunci sampai selesai supaya tidak dobel jadi transaksi & notifikasi.
-  const [lunasiLoading, setLunasiLoading] = useState(false);
-
-  async function handleLunasiClick() {
-    if (lunasiLoading) return;
-    setLunasiLoading(true);
-    try {
-      await onLunasi();
-    } finally {
-      // Kartu ini biasanya berpindah kategori (hilang dari daftar "Belum
-      // Lunas") begitu berhasil, jadi reset ini cuma jaga-jaga kalau
-      // ternyata masih tampil (mis. filter "Semua").
-      setLunasiLoading(false);
-    }
-  }
+  const sudahDibayar = getKasbonAmountPaid(entry);
+  // Kasbon dianggap "dicicil" kalau sudah ada pembayaran sebagian yang
+  // tercatat tapi belum lunas — dipakai untuk tampilkan progres di kartu.
+  const dicicil = !lunas && sudahDibayar > 0;
 
   return (
     <div className={`bg-surface rounded-card p-4 border ${overdue ? 'border-brick/40' : 'border-cream-dark'}`}>
@@ -48,10 +36,10 @@ export default function KasbonListItem({
         <div className="flex flex-col items-end gap-1">
           <span
             className={`text-[11px] px-2.5 py-1 rounded-full font-medium shrink-0 ${
-              lunas ? 'bg-sage/15 text-sage' : 'bg-brick/10 text-brick'
+              lunas ? 'bg-sage/15 text-sage' : dicicil ? 'bg-caramel/15 text-caramel' : 'bg-brick/10 text-brick'
             }`}
           >
-            {lunas ? 'Lunas' : 'Belum Lunas'}
+            {lunas ? 'Lunas' : dicicil ? 'Dicicil' : 'Belum Lunas'}
           </span>
           {overdue && (
             <span className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full font-medium bg-brick text-cream shrink-0">
@@ -69,32 +57,44 @@ export default function KasbonListItem({
         ))}
       </div>
 
+      {dicicil && (
+        <div className="mt-2.5 pt-2.5 border-t border-cream-dark">
+          <div className="flex items-center justify-between text-xs text-espresso/60 mb-1">
+            <span>Sudah dibayar {formatRupiah(sudahDibayar)}</span>
+            <span>Sisa {formatRupiah(entry.total - sudahDibayar)}</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-cream-dark overflow-hidden">
+            <div
+              className="h-full bg-caramel"
+              style={{ width: `${Math.min(100, (sudahDibayar / entry.total) * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mt-3">
         <span className="font-semibold text-espresso">{formatRupiah(entry.total)}</span>
         <div className="flex items-center gap-1.5">
           <button
             onClick={onEdit}
-            disabled={lunasiLoading}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-cream-dark text-espresso disabled:opacity-40"
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-cream-dark text-espresso"
             aria-label="Edit kasbon"
           >
             <Pencil size={14} />
           </button>
           <button
             onClick={onDelete}
-            disabled={lunasiLoading}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-brick/10 text-brick disabled:opacity-40"
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-brick/10 text-brick"
             aria-label="Hapus kasbon"
           >
             <Trash2 size={14} />
           </button>
           {!lunas && (
             <button
-              onClick={handleLunasiClick}
-              disabled={lunasiLoading}
-              className="text-sm bg-espresso text-cream px-4 py-1.5 rounded-card disabled:opacity-60"
+              onClick={onBayar}
+              className="text-sm bg-espresso text-cream px-4 py-1.5 rounded-card"
             >
-              {lunasiLoading ? 'Memproses...' : 'Lunasi'}
+              Bayar
             </button>
           )}
         </div>

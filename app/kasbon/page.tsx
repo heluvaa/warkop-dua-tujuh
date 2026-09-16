@@ -8,21 +8,25 @@ import {
   createKasbon,
   updateKasbon,
   deleteKasbon,
-  lunasiKasbon,
+  bayarCicilanKasbon,
   checkOverdueKasbonNotifications,
 } from '@/lib/storage/kasbonService';
+import { useOperatorSession } from '@/lib/context/OperatorSessionContext';
 import { formatRupiah } from '@/lib/utils/format';
 import { daysSince } from '@/lib/utils/date';
 import { KASBON_OVERDUE_DAYS } from '@/lib/constants';
 import KasbonListItem from '@/components/kasbon/KasbonListItem';
 import KasbonFormModal from '@/components/kasbon/KasbonFormModal';
+import KasbonCicilanModal from '@/components/kasbon/KasbonCicilanModal';
 
 type Filter = 'belum_lunas' | 'jatuh_tempo' | 'lunas' | 'semua';
 
 export default function KasbonPage() {
+  const session = useOperatorSession();
   const [entries, setEntries] = useState<KasbonEntry[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<KasbonEntry | null>(null);
+  const [payingEntry, setPayingEntry] = useState<KasbonEntry | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('belum_lunas');
   const [query, setQuery] = useState('');
@@ -51,8 +55,10 @@ export default function KasbonPage() {
     await refresh();
   }
 
-  async function handleLunasi(id: string) {
-    await lunasiKasbon(id);
+  async function handleBayar(amount: number) {
+    if (!payingEntry) return;
+    await bayarCicilanKasbon(payingEntry.id, amount, session.operatorName);
+    setPayingEntry(null);
     await refresh();
   }
 
@@ -160,7 +166,7 @@ export default function KasbonPage() {
             <KasbonListItem
               key={entry.id}
               entry={entry}
-              onLunasi={() => handleLunasi(entry.id)}
+              onBayar={() => setPayingEntry(entry)}
               onEdit={() => {
                 setEditing(entry);
                 setShowForm(true);
@@ -179,6 +185,14 @@ export default function KasbonPage() {
             setEditing(null);
           }}
           onSave={handleSave}
+        />
+      )}
+
+      {payingEntry && (
+        <KasbonCicilanModal
+          entry={payingEntry}
+          onClose={() => setPayingEntry(null)}
+          onConfirm={handleBayar}
         />
       )}
 

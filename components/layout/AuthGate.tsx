@@ -46,48 +46,50 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [activeShift, setActiveShift] = useState<ShiftEntry | null>(null);
   const [showCloseShift, setShowCloseShift] = useState(false);
 
-  async function refreshShift() {
-    setActiveShift(await getActiveShift());
+  // Shift dicari berdasarkan operatorId yang SEDANG login — tiap operator
+  // punya shift & modal awalnya sendiri (lihat komentar di shiftService.ts).
+  async function refreshShift(operatorId: string | undefined) {
+    setActiveShift(operatorId ? await getActiveShift(operatorId) : null);
   }
 
   useEffect(() => {
     (async () => {
       setOperators(await getAllOperators());
-      setSession(await getActiveOperator());
-      await refreshShift();
+      const activeSession = await getActiveOperator();
+      setSession(activeSession);
+      await refreshShift(activeSession?.operatorId);
       setChecking(false);
     })();
   }, []);
 
   async function handleUnlock(operator: Operator) {
     await setActiveOperator(operator);
-    setSession(await getActiveOperator());
-    await refreshShift();
+    const newSession = await getActiveOperator();
+    setSession(newSession);
+    await refreshShift(newSession?.operatorId);
   }
 
   async function handleOpenShift(modalAwal: number) {
-    if (!activeOperatorName) return;
-    const operator = operators.find((o) => o.name === activeOperatorName);
+    if (!session) return;
     await openShift({
-      operatorId: operator?.id ?? '',
-      operatorName: activeOperatorName,
+      operatorId: session.operatorId,
+      operatorName: session.operatorName,
       modalAwal,
     });
-    await refreshShift();
+    await refreshShift(session.operatorId);
   }
 
   async function handleCloseShift(data: { physicalCash: number; note?: string }) {
-    if (!activeShift || !activeOperatorName) return;
-    const closingOperator = operators.find((o) => o.name === activeOperatorName);
+    if (!activeShift || !session) return;
     await closeShift({
       shiftId: activeShift.id,
       physicalCash: data.physicalCash,
       note: data.note,
-      closedByOperatorId: closingOperator?.id ?? '',
-      closedByOperatorName: activeOperatorName,
+      closedByOperatorId: session.operatorId,
+      closedByOperatorName: session.operatorName,
     });
     setShowCloseShift(false);
-    await refreshShift();
+    await refreshShift(session.operatorId);
   }
 
   // Hanya dipakai saat operators.length === 0 — bikin akun kasir pertama
@@ -106,6 +108,11 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   async function handleLogout() {
     await clearActiveOperator();
     setSession(null);
+    // Kosongkan shift yang kelihatan di layar juga — operator berikutnya
+    // yang login mungkin punya shift lain (atau belum ada shift sama
+    // sekali), jangan sampai sempat kelihatan modal/badge milik operator
+    // sebelumnya sebelum refreshShift() untuk sesi baru selesai.
+    setActiveShift(null);
   }
 
   // Cegah "kedip" nampilin layar login sebentar sebelum sesi dicek.

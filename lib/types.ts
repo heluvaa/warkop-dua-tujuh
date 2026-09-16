@@ -153,6 +153,23 @@ export interface Transaction {
 
 export type KasbonStatus = 'belum_lunas' | 'lunas';
 
+// Satu kali pembayaran cicilan kasbon — kasbon bisa dilunasi bertahap
+// (mis. bayar Rp20rb dulu, sisanya nyusul), bukan cuma lunas total sekaligus.
+// Tiap pembayaran (baik cicilan sebagian maupun pelunasan penuh lewat
+// lunasiKasbon) dicatat sebagai satu entri di sini DAN sebagai satu
+// Transaction pemasukan tersendiri (source 'kasbon_lunas') — lihat
+// bayarCicilanKasbon di lib/storage/kasbonService.ts.
+export interface KasbonPayment {
+  id: string;
+  amount: number;
+  paidAt: string;
+  // ID Transaction pemasukan yang dibuat bersamaan dengan pembayaran ini —
+  // dipakai untuk membatalkan (void) transaksi terkait kalau kasbon ini
+  // nanti dihapus dari Buku Kasbon.
+  transactionId: string;
+  operatorName?: string;
+}
+
 export interface KasbonEntry {
   id: string;
   customerName: string;
@@ -161,10 +178,15 @@ export interface KasbonEntry {
   status: KasbonStatus;
   createdAt: string;
   paidAt?: string;
-  // ID transaksi pemasukan yang otomatis dibuat saat kasbon ini dilunasi
-  // (lihat lunasiKasbon) — dipakai untuk ikut memperbarui/membatalkan
-  // transaksi itu kalau kasbon yang sudah lunas diedit/dihapus, supaya
-  // Laporan tetap sinkron dengan Buku Kasbon.
+  // Riwayat cicilan/pembayaran kasbon ini — kosong/undefined berarti belum
+  // ada pembayaran sama sekali. Jumlahkan `amount` di sini untuk tahu total
+  // yang sudah dibayar (lihat getKasbonAmountPaid). Kasbon dianggap lunas
+  // (status berubah otomatis) begitu total pembayaran >= `total`.
+  payments?: KasbonPayment[];
+  // ID transaksi pemasukan dari pembayaran TERAKHIR (cicilan atau pelunasan
+  // penuh) — dipertahankan untuk kompatibilitas dengan kasbon lama (sebelum
+  // fitur cicilan ada) yang cuma kenal satu transactionId untuk satu
+  // pelunasan penuh sekaligus.
   transactionId?: string;
   // ID transaksi POS yang dibuat BERSAMAAN dengan kasbon ini lewat split
   // payment (mis. pelanggan bayar sebagian cash, sisanya kasbon langsung
