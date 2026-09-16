@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Wallet, CheckCircle2, TrendingUp, TrendingDown, Clock } from 'lucide-react';
+import { Wallet, CheckCircle2, TrendingUp, TrendingDown, Clock, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
 import type { ShiftEntry } from '@/lib/types';
-import { getShiftHistory } from '@/lib/storage/shiftService';
+import { getShiftHistory, clearAllShifts } from '@/lib/storage/shiftService';
 import { formatRupiah, formatDateTime } from '@/lib/utils/format';
+import { useIsPemilik } from '@/lib/context/OperatorSessionContext';
 
 // Riwayat shift laci kas (buka dengan modal awal, tutup dengan hitung fisik
 // & selisih) — lihat lib/storage/shiftService.ts. Dipisah jadi komponen
@@ -12,26 +13,62 @@ import { formatRupiah, formatDateTime } from '@/lib/utils/format';
 // karena datanya per-shift, bukan per-tanggal-yang-dipilih seperti bagian
 // lain di halaman itu.
 export default function ShiftHistorySection() {
+  const isPemilik = useIsPemilik();
   const [shifts, setShifts] = useState<ShiftEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
-    getShiftHistory()
+    refresh();
+  }, []);
+
+  function refresh() {
+    setLoading(true);
+    return getShiftHistory()
       .then(setShifts)
       .finally(() => setLoading(false));
-  }, []);
+  }
+
+  // Reset khusus riwayat shift (beda dari "Reset Semua Data" di halaman
+  // Laporan yang sekalian menghapus transaksi, pengeluaran, dll) — dipakai
+  // kalau pemilik cuma mau bersihkan catatan buka/tutup laci kas tanpa
+  // menyentuh data penjualan. Hanya pemilik yang boleh, sama seperti aksi
+  // hapus data lain di halaman ini.
+  async function handleResetShifts() {
+    if (!isPemilik || resetting) return;
+    setResetting(true);
+    try {
+      await clearAllShifts();
+      setConfirmReset(false);
+      await refresh();
+    } finally {
+      setResetting(false);
+    }
+  }
 
   if (loading) return null;
   if (shifts.length === 0) return null;
 
   const visible = expanded ? shifts : shifts.slice(0, 5);
+  const hasActiveShift = shifts.some((s) => s.status === 'open');
 
   return (
     <section className="mb-6">
-      <h2 className="font-display font-semibold text-espresso mb-2 flex items-center gap-1.5">
-        <Wallet size={17} /> Riwayat Shift
-      </h2>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <h2 className="font-display font-semibold text-espresso flex items-center gap-1.5">
+          <Wallet size={17} /> Riwayat Shift
+        </h2>
+        {isPemilik && (
+          <button
+            onClick={() => setConfirmReset(true)}
+            className="flex items-center gap-1 text-xs font-medium text-brick"
+          >
+            <Trash2 size={13} /> Reset
+          </button>
+        )}
+      </div>
       <div className="space-y-2">
         {visible.map((shift) => (
           <ShiftRow key={shift.id} shift={shift} />
@@ -44,6 +81,43 @@ export default function ShiftHistorySection() {
         >
           {expanded ? 'Tampilkan lebih sedikit' : `Tampilkan semua (${shifts.length})`}
         </button>
+      )}
+
+      {confirmReset && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-cream rounded-card p-5 max-w-xs w-full space-y-4">
+            <div className="flex items-center gap-2 text-brick">
+              <AlertTriangle size={20} />
+              <h3 className="font-display font-semibold text-lg">Reset Riwayat Shift</h3>
+            </div>
+            <p className="text-sm text-espresso/70">
+              Ini akan menghapus SELURUH riwayat buka/tutup shift ({shifts.length} shift) dan tidak
+              bisa dibatalkan.
+              {hasActiveShift &&
+                ' Ada shift yang sedang berjalan sekarang — shift itu juga akan ikut terhapus, jadi status kas akan kembali "belum dibuka".'}
+            </p>
+            <p className="text-xs text-espresso/50">
+              Data transaksi, pengeluaran, dan lainnya di Laporan tidak ikut terhapus.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setConfirmReset(false)}
+                disabled={resetting}
+                className="flex-1 border border-cream-dark rounded-card py-2.5 text-espresso disabled:opacity-40"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleResetShifts}
+                disabled={resetting}
+                className="flex-1 bg-brick text-cream rounded-card py-2.5 disabled:opacity-40 flex items-center justify-center gap-1.5"
+              >
+                {resetting ? <Loader2 size={16} className="animate-spin" /> : null}
+                Hapus
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );

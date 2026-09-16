@@ -18,8 +18,10 @@ export default function OpenShiftModal({
   const [amountInput, setAmountInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Modal awal boleh dikosongkan (mis. laci kas memang belum diisi apa-apa
+  // di awal shift) — dianggap Rp0, kasir tidak dipaksa mengetik "0" dulu.
   const modalAwal = Number(amountInput) || 0;
-  const isValid = modalAwal >= 0 && amountInput.length > 0;
+  const isValid = modalAwal >= 0;
 
   function handleQuickAmount(amt: number) {
     setAmountInput((prev) => String((Number(prev) || 0) + amt));
@@ -45,17 +47,18 @@ export default function OpenShiftModal({
           <h2 className="font-display font-semibold text-lg text-espresso">Buka Shift</h2>
           <p className="text-sm text-espresso/60">
             {operatorName}, hitung dulu uang di laci kas sekarang lalu masukkan sebagai modal awal.
+            Boleh dikosongkan kalau laci belum diisi apa-apa.
           </p>
         </div>
 
         <div>
-          <label className="text-xs text-espresso/60">Modal Awal</label>
+          <label className="text-xs text-espresso/60">Modal Awal (opsional)</label>
           <input
             inputMode="numeric"
             autoFocus
             value={amountInput}
             onChange={(e) => setAmountInput(e.target.value.replace(/\D/g, ''))}
-            placeholder="0"
+            placeholder="0 — boleh dikosongkan"
             className="w-full border border-cream-dark rounded-card px-4 py-3 bg-surface text-espresso mt-1 text-lg font-semibold focus:outline-none focus:border-espresso"
           />
           <p className="text-xs text-espresso/50 mt-1">{formatRupiah(modalAwal)}</p>

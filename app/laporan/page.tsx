@@ -578,8 +578,10 @@ export default function LaporanPage() {
   // Reset TOTAL semua data yang muncul di Laporan (semua tanggal, bukan
   // cuma tanggal yang lagi dipilih) — dipakai untuk membersihkan data
   // testing sebelum warkop mulai dipakai sungguhan. Menu, Pengaturan
-  // (termasuk kode QRIS), dan daftar Kasir & Shift SENGAJA tidak disentuh,
-  // supaya tidak perlu setup ulang dari nol.
+  // (termasuk kode QRIS), dan daftar akun Kasir SENGAJA tidak disentuh,
+  // supaya tidak perlu setup ulang dari nol. Riwayat shift IKUT dihapus
+  // (lihat clearAllShifts di bawah) — untuk reset shift saja tanpa data
+  // lain, pemilik bisa pakai tombol "Reset" di ShiftHistorySection.
   async function handleResetAllData() {
     if (!isPemilik || resetAllConfirmText.trim().toUpperCase() !== 'RESET') return;
     setResettingAll(true);
@@ -1808,7 +1810,7 @@ export default function LaporanPage() {
               <li>Riwayat shift (termasuk shift yang sedang berjalan, kalau ada)</li>
             </ul>
             <p className="text-sm text-sage">
-              Menu, Pengaturan (termasuk kode QRIS), dan daftar Kasir & Shift TIDAK ikut dihapus.
+              Menu, Pengaturan (termasuk kode QRIS), dan daftar akun Kasir TIDAK ikut dihapus.
             </p>
             <div className="space-y-1.5 pt-1 border-t border-cream-dark">
               <label className="text-xs text-espresso/60">
