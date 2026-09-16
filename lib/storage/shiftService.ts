@@ -23,6 +23,14 @@ export async function getAllShifts(): Promise<ShiftEntry[]> {
   return getItem<ShiftEntry[]>(STORAGE_KEYS.SHIFTS, []);
 }
 
+// Hapus SELURUH riwayat shift (termasuk shift yang sedang berjalan kalau
+// ada) — dipakai fitur reset data laporan, lihat clearAllTransactions di
+// transactionService.ts untuk konteks yang sama. Setelah ini status shift
+// kembali "belum dibuka", jadi kasir perlu buka shift baru untuk lanjut jualan.
+export async function clearAllShifts(): Promise<void> {
+  await setItem(STORAGE_KEYS.SHIFTS, []);
+}
+
 // Riwayat shift, terbaru dulu — dipakai untuk daftar di halaman Laporan.
 export async function getShiftHistory(): Promise<ShiftEntry[]> {
   const all = await getAllShifts();

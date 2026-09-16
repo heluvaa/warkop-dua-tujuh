@@ -7,6 +7,7 @@ import {
   validateStaticQris,
   decodeQrisFromImageFile,
   isBarcodeDetectionSupported,
+  cleanRawCode,
   type QrisValidationResult,
 } from '@/lib/utils/qris';
 
@@ -71,7 +72,7 @@ export default function QrisSettingsSection({ isPemilik }: { isPemilik: boolean 
     if (!validation || !validation.valid || saving) return;
     setSaving(true);
     try {
-      const cleaned = draftCode.trim().replace(/\s+/g, '');
+      const cleaned = cleanRawCode(draftCode);
       await updateSettings({
         qrisStaticCode: cleaned,
         qrisMerchantName: validation.info.merchantName,

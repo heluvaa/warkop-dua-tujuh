@@ -4,9 +4,12 @@ import { useEffect, useState } from 'react';
 import { Download, Trash2, Send, TrendingUp, TrendingDown, Wallet, Loader2, CalendarDays, Flame, Ban, Search, X, LineChart, Users, Clock, CalendarRange, PiggyBank, Receipt, AlertTriangle, Lock } from 'lucide-react';
 import type { Transaction, PengeluaranEntry, KasbonEntry } from '@/lib/types';
 import { useIsPemilik } from '@/lib/context/OperatorSessionContext';
-import { getTransactionsByDate, clearTransactionsByDate, voidTransaction, getDailyTotals, getTransactionsByMonth, getWeekComparison, getMonthComparison, getActiveTransactionsSince, getCashAmount, getQrisAmount, type WeekComparison, type MonthComparison } from '@/lib/storage/transactionService';
-import { getPengeluaranByDate, clearPengeluaranByDate, getPengeluaranByMonth } from '@/lib/storage/pengeluaranService';
-import { getAllKasbon } from '@/lib/storage/kasbonService';
+import { getTransactionsByDate, clearTransactionsByDate, clearAllTransactions, voidTransaction, getDailyTotals, getTransactionsByMonth, getWeekComparison, getMonthComparison, getActiveTransactionsSince, getCashAmount, getQrisAmount, type WeekComparison, type MonthComparison } from '@/lib/storage/transactionService';
+import { getPengeluaranByDate, clearPengeluaranByDate, clearAllPengeluaran, getPengeluaranByMonth } from '@/lib/storage/pengeluaranService';
+import { getAllKasbon, clearAllKasbon } from '@/lib/storage/kasbonService';
+import { clearAllPendingOrders } from '@/lib/storage/pendingOrderService';
+import { clearAllStockPurchases } from '@/lib/storage/stockPurchaseService';
+import { clearAllShifts } from '@/lib/storage/shiftService';
 import { KASBON_OVERDUE_DAYS } from '@/lib/constants';
 import { incrementStock } from '@/lib/storage/menuService';
 import { formatRupiah, formatDateTime, formatTime, paymentMethodLabel, formatItemLabel } from '@/lib/utils/format';
@@ -45,6 +48,9 @@ export default function LaporanPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [pengeluaran, setPengeluaran] = useState<PengeluaranEntry[]>([]);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmResetAll, setConfirmResetAll] = useState(false);
+  const [resetAllConfirmText, setResetAllConfirmText] = useState('');
+  const [resettingAll, setResettingAll] = useState(false);
   const [sendState, setSendState] = useState<SendState>('idle');
   const [sendError, setSendError] = useState<string | null>(null);
   const [voidTarget, setVoidTarget] = useState<Transaction | null>(null);
@@ -567,6 +573,31 @@ export default function LaporanPage() {
     await clearPengeluaranByDate(selectedDate);
     setConfirmClear(false);
     await refresh(selectedDate);
+  }
+
+  // Reset TOTAL semua data yang muncul di Laporan (semua tanggal, bukan
+  // cuma tanggal yang lagi dipilih) — dipakai untuk membersihkan data
+  // testing sebelum warkop mulai dipakai sungguhan. Menu, Pengaturan
+  // (termasuk kode QRIS), dan daftar Kasir & Shift SENGAJA tidak disentuh,
+  // supaya tidak perlu setup ulang dari nol.
+  async function handleResetAllData() {
+    if (!isPemilik || resetAllConfirmText.trim().toUpperCase() !== 'RESET') return;
+    setResettingAll(true);
+    try {
+      await Promise.all([
+        clearAllTransactions(),
+        clearAllPengeluaran(),
+        clearAllKasbon(),
+        clearAllPendingOrders(),
+        clearAllStockPurchases(),
+        clearAllShifts(),
+      ]);
+      setConfirmResetAll(false);
+      setResetAllConfirmText('');
+      await refresh(selectedDate);
+    } finally {
+      setResettingAll(false);
+    }
   }
 
   // Alasan final yang akan disimpan: kalau pilih "Lainnya", pakai teks bebas
@@ -1192,6 +1223,14 @@ export default function LaporanPage() {
             <Trash2 size={16} /> Clear Data Tanggal Ini
           </button>
         )}
+        {isPemilik && (
+          <button
+            onClick={() => setConfirmResetAll(true)}
+            className="flex items-center gap-1.5 bg-brick/10 border border-brick/30 text-brick rounded-card px-3.5 py-2 text-sm font-medium"
+          >
+            <AlertTriangle size={16} /> Reset Semua Data (Testing)
+          </button>
+        )}
         <button
           onClick={handleKirimLaporan}
           disabled={sendState === 'sending' || !isToday}
@@ -1743,6 +1782,64 @@ export default function LaporanPage() {
               </button>
               <button onClick={handleClearData} className="flex-1 bg-brick text-cream rounded-card py-2.5">
                 Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmResetAll && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-cream rounded-card p-5 max-w-sm w-full space-y-4">
+            <div className="flex items-center gap-2 text-brick">
+              <AlertTriangle size={20} />
+              <h3 className="font-display font-semibold text-lg">Reset Semua Data Laporan</h3>
+            </div>
+            <p className="text-sm text-espresso/70">
+              Ini akan menghapus SEMUA riwayat berikut, dari SEMUA tanggal (bukan cuma tanggal yang
+              lagi dipilih), dan tidak bisa dibatalkan:
+            </p>
+            <ul className="text-sm text-espresso/70 list-disc pl-5 space-y-0.5">
+              <li>Transaksi & void</li>
+              <li>Pengeluaran</li>
+              <li>Kasbon</li>
+              <li>Pesanan Belum Bayar</li>
+              <li>Riwayat pembelian stok</li>
+              <li>Riwayat shift (termasuk shift yang sedang berjalan, kalau ada)</li>
+            </ul>
+            <p className="text-sm text-sage">
+              Menu, Pengaturan (termasuk kode QRIS), dan daftar Kasir & Shift TIDAK ikut dihapus.
+            </p>
+            <div className="space-y-1.5 pt-1 border-t border-cream-dark">
+              <label className="text-xs text-espresso/60">
+                Ketik <span className="font-semibold text-brick">RESET</span> untuk konfirmasi
+              </label>
+              <input
+                type="text"
+                value={resetAllConfirmText}
+                onChange={(e) => setResetAllConfirmText(e.target.value)}
+                placeholder="RESET"
+                className="w-full border border-cream-dark rounded-card px-3 py-2.5 text-espresso bg-surface focus:outline-none focus:border-brick"
+              />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => {
+                  setConfirmResetAll(false);
+                  setResetAllConfirmText('');
+                }}
+                disabled={resettingAll}
+                className="flex-1 border border-cream-dark rounded-card py-2.5 text-espresso disabled:opacity-40"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleResetAllData}
+                disabled={resettingAll || resetAllConfirmText.trim().toUpperCase() !== 'RESET'}
+                className="flex-1 bg-brick text-cream rounded-card py-2.5 disabled:opacity-40 flex items-center justify-center gap-1.5"
+              >
+                {resettingAll ? <Loader2 size={16} className="animate-spin" /> : null}
+                Hapus Semua
               </button>
             </div>
           </div>

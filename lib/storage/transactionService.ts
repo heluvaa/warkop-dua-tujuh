@@ -131,6 +131,14 @@ export async function clearTodayTransactions(): Promise<void> {
   return clearTransactionsByDate(todayDateKey());
 }
 
+// Hapus SELURUH riwayat transaksi (semua tanggal) — dipakai fitur reset data
+// laporan di halaman Laporan, misalnya untuk membersihkan data testing
+// sebelum warkop mulai dipakai sungguhan. Tidak menyentuh menu/pengaturan/
+// data kasir, cuma riwayat transaksinya saja.
+export async function clearAllTransactions(): Promise<void> {
+  await setItem(STORAGE_KEYS.TRANSACTIONS, []);
+}
+
 // monthKey berformat 'YYYY-MM' (sesuai value dari <input type="month">).
 // Dipakai untuk rekap bulanan di halaman Laporan.
 export async function getTransactionsByMonth(monthKey: string): Promise<Transaction[]> {

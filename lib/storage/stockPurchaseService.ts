@@ -7,6 +7,13 @@ export async function getAllStockPurchases(): Promise<StockPurchaseEntry[]> {
   return getItem<StockPurchaseEntry[]>(STORAGE_KEYS.STOCK_PURCHASES, []);
 }
 
+// Hapus SELURUH riwayat pembelian stok — dipakai fitur reset data laporan,
+// lihat clearAllTransactions di transactionService.ts untuk konteks yang
+// sama. Tidak mengubah stok/HPP menu saat ini, cuma riwayat pembeliannya.
+export async function clearAllStockPurchases(): Promise<void> {
+  await setItem(STORAGE_KEYS.STOCK_PURCHASES, []);
+}
+
 // HPP baru dari satu baris pembelian, pakai rata-rata tertimbang antara
 // stok lama (dengan HPP lama) dan stok yang baru masuk (dengan harga beli
 // kali ini) — supaya kalau harga bahan naik-turun, HPP menu tidak melompat

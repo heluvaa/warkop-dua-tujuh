@@ -10,6 +10,12 @@ export async function getAllPendingOrders(): Promise<PendingOrder[]> {
   return getItem<PendingOrder[]>(STORAGE_KEYS.PENDING_ORDERS, []);
 }
 
+// Hapus SELURUH pesanan belum bayar — dipakai fitur reset data laporan,
+// lihat clearAllTransactions di transactionService.ts untuk konteks yang sama.
+export async function clearAllPendingOrders(): Promise<void> {
+  await setItem(STORAGE_KEYS.PENDING_ORDERS, []);
+}
+
 export async function createPendingOrder(
   data: Omit<PendingOrder, 'id' | 'createdAt'>
 ): Promise<PendingOrder> {

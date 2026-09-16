@@ -11,6 +11,15 @@ export async function getAllKasbon(): Promise<KasbonEntry[]> {
   return getItem<KasbonEntry[]>(STORAGE_KEYS.KASBON, []);
 }
 
+// Hapus SELURUH riwayat kasbon — dipakai fitur reset data laporan, lihat
+// clearAllTransactions di transactionService.ts untuk konteks yang sama.
+export async function clearAllKasbon(): Promise<void> {
+  await setItem(STORAGE_KEYS.KASBON, []);
+  // Sekalian bersihkan daftar ID yang pernah dinotifikasi jatuh tempo, biar
+  // tidak ada sisa ID basi yang mengacu ke kasbon yang sudah dihapus.
+  await setItem(STORAGE_KEYS.KASBON_OVERDUE_NOTIFIED, []);
+}
+
 export async function createKasbon(
   data: Omit<KasbonEntry, 'id' | 'createdAt' | 'status'>
 ): Promise<KasbonEntry> {

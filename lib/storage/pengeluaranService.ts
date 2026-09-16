@@ -82,3 +82,9 @@ export async function getTodayPengeluaran(): Promise<PengeluaranEntry[]> {
 export async function clearTodayPengeluaran(): Promise<void> {
   return clearPengeluaranByDate(todayDateKey());
 }
+
+// Hapus SELURUH riwayat pengeluaran (semua tanggal) — dipakai fitur reset
+// data laporan, lihat clearAllTransactions untuk konteks yang sama.
+export async function clearAllPengeluaran(): Promise<void> {
+  await setItem(STORAGE_KEYS.PENGELUARAN, []);
+}

@@ -85,7 +85,7 @@ export type QrisValidationResult =
 // nama merchant "Toko Kopi" atau kota "JAKARTA PUSAT"), dan ikut dihitung
 // di panjang field TLV-nya. Membuang spasi itu akan merusak keselarasan
 // panjang field dengan isinya.
-function cleanRawCode(rawInput: string): string {
+export function cleanRawCode(rawInput: string): string {
   return rawInput.replace(/[\r\n\t]+/g, '').trim();
 }
 
