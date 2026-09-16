@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ShoppingCart, BookUser, NotebookPen, Receipt, UtensilsCrossed, BarChart3, Coffee, Settings, UserRound, Users, LogOut, Wallet, type LucideIcon } from 'lucide-react';
+import { ShoppingCart, BookUser, NotebookPen, Receipt, UtensilsCrossed, BarChart3, Coffee, Settings, UserRound, Users, LogOut, Wallet, MoreHorizontal, type LucideIcon } from 'lucide-react';
 import { getAllKasbon } from '@/lib/storage/kasbonService';
 import { getAllPendingOrders } from '@/lib/storage/pendingOrderService';
 import { getDaysSinceLastBackup } from '@/lib/storage/backupService';
@@ -33,6 +33,11 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/pengaturan', label: 'Pengaturan', icon: Settings },
 ];
 
+// Di nav bawah (HP) cuma 4 menu yang paling sering dipakai saat jaga kasir
+// yang tampil langsung; sisanya dikumpulkan di sheet "Lainnya" supaya nav
+// tidak perlu di-scroll dan tetap rapi di layar sempit.
+const MOBILE_PRIMARY_HREFS = ['/kasir', '/belum-bayar', '/kasbon', '/menu'];
+
 export default function Sidebar({
   onLogout,
   activeShift,
@@ -50,6 +55,15 @@ export default function Sidebar({
   const [pendingOrderCount, setPendingOrderCount] = useState(0);
   const [backupOverdue, setBackupOverdue] = useState(false);
   const [activeOperatorName, setActiveOperatorName] = useState<string | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  const primaryNavItems = NAV_ITEMS.filter((item) => MOBILE_PRIMARY_HREFS.includes(item.href));
+  const moreNavItems = NAV_ITEMS.filter((item) => !MOBILE_PRIMARY_HREFS.includes(item.href));
+  const moreActive = moreNavItems.some((item) => pathname?.startsWith(item.href));
+  // Kalau ada hal yang perlu diperhatikan di menu yang disembunyikan (mis.
+  // pengingat backup di Pengaturan), tunjukkan titik di tombol "Lainnya"
+  // supaya tidak tersembunyi begitu saja dari perhatian kasir/pemilik.
+  const moreHasAlert = backupOverdue;
 
   async function handleLogout() {
     await clearActiveOperator();
@@ -74,6 +88,7 @@ export default function Sidebar({
       setActiveOperatorName(activeSession?.operatorName ?? null);
     }
     checkOverdue();
+    setMoreOpen(false);
     // Cek ulang setiap kali pindah halaman, supaya badge ikut update kalau
     // baru saja melunasi/menambah kasbon, backup, atau ganti kasir di halaman lain.
   }, [pathname]);
@@ -163,15 +178,17 @@ export default function Sidebar({
         </nav>
       </aside>
 
-      {/* Navigasi bawah untuk HP/Tablet */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-[#3C2415] text-[#FBF6EE] flex justify-around py-2 z-40 border-t border-[#5A3825]">
-        {NAV_ITEMS.map(({ href, label, shortLabel, icon: Icon }) => {
+      {/* Navigasi bawah untuk HP/Tablet — cuma 4 menu paling sering dipakai
+          yang tampil langsung; menu lainnya dibuka lewat tombol "Lainnya"
+          supaya nav tidak perlu di-scroll dan tetap rapi di layar sempit. */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-[#3C2415] text-[#FBF6EE] flex py-2 z-40 border-t border-[#5A3825]">
+        {primaryNavItems.map(({ href, label, shortLabel, icon: Icon }) => {
           const active = pathname?.startsWith(href);
           return (
             <Link
               key={href}
               href={href}
-              className={`relative flex flex-col items-center gap-0.5 px-2 py-1 text-[11px] whitespace-nowrap ${
+              className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1 text-[11px] whitespace-nowrap ${
                 active ? 'text-[#C9A227]' : 'text-[#FBF6EE]/70'
               }`}
             >
@@ -187,15 +204,63 @@ export default function Sidebar({
                     {pendingOrderCount}
                   </span>
                 )}
-                {href === '/pengaturan' && backupOverdue && (
-                  <span className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-[#B3432B]" />
-                )}
               </span>
               {shortLabel ?? label}
             </Link>
           );
         })}
+        <button
+          type="button"
+          onClick={() => setMoreOpen(true)}
+          className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1 text-[11px] whitespace-nowrap ${
+            moreActive ? 'text-[#C9A227]' : 'text-[#FBF6EE]/70'
+          }`}
+        >
+          <span className="relative">
+            <MoreHorizontal size={20} />
+            {moreHasAlert && (
+              <span className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-[#B3432B]" />
+            )}
+          </span>
+          Lainnya
+        </button>
       </nav>
+
+      {/* Bottom sheet berisi menu selain 4 menu utama di atas */}
+      {moreOpen && (
+        <>
+          <div
+            className="md:hidden fixed inset-0 bg-black/40 z-40"
+            onClick={() => setMoreOpen(false)}
+          />
+          <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[#3C2415] text-[#FBF6EE] rounded-t-2xl z-50 pt-3 pb-6 px-4">
+            <div className="w-10 h-1 rounded-full bg-[#FBF6EE]/30 mx-auto mb-4" />
+            <div className="grid grid-cols-4 gap-3">
+              {moreNavItems.map(({ href, label, icon: Icon }) => {
+                const active = pathname?.startsWith(href);
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    onClick={() => setMoreOpen(false)}
+                    className={`relative flex flex-col items-center gap-1.5 px-2 py-3 rounded-card text-[11px] text-center leading-tight ${
+                      active ? 'bg-[#5A3825] text-[#C9A227]' : 'text-[#FBF6EE]/80'
+                    }`}
+                  >
+                    <span className="relative">
+                      <Icon size={22} />
+                      {href === '/pengaturan' && backupOverdue && (
+                        <span className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-[#B3432B]" />
+                      )}
+                    </span>
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }
