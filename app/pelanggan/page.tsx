@@ -1,20 +1,31 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, X, ChevronRight, AlertTriangle } from 'lucide-react';
-import { getAllCustomerSummaries, type CustomerSummary } from '@/lib/storage/customerService';
+import { Search, X, ChevronRight, AlertTriangle, Users, UserPlus, Wallet, CalendarCheck } from 'lucide-react';
+import {
+  getAllCustomerSummaries,
+  getCustomerReportSummary,
+  type CustomerSummary,
+  type CustomerReportSummary,
+} from '@/lib/storage/customerService';
 import { formatRupiah } from '@/lib/utils/format';
 import CustomerDetailModal from '@/components/pelanggan/CustomerDetailModal';
 
 export default function PelangganPage() {
   const [customers, setCustomers] = useState<CustomerSummary[]>([]);
+  const [report, setReport] = useState<CustomerReportSummary | null>(null);
   const [query, setQuery] = useState('');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   async function refresh() {
     setLoading(true);
-    setCustomers(await getAllCustomerSummaries());
+    const [summaries, reportSummary] = await Promise.all([
+      getAllCustomerSummaries(),
+      getCustomerReportSummary(),
+    ]);
+    setCustomers(summaries);
+    setReport(reportSummary);
     setLoading(false);
   }
 
@@ -34,6 +45,37 @@ export default function PelangganPage() {
         Dikumpulkan dari nama yang diisi di Kasir & Kasbon. Total belum lunas semua pelanggan:{' '}
         <span className="font-semibold text-brick">{formatRupiah(totalKasbonBelumLunas)}</span>
       </p>
+
+      {report && (
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <div className="bg-surface rounded-card border border-cream-dark p-3">
+            <p className="flex items-center gap-1 text-[11px] text-espresso/50">
+              <Users size={12} /> Total Pelanggan
+            </p>
+            <p className="text-lg font-semibold text-espresso mt-0.5">{report.totalPelanggan}</p>
+          </div>
+          <div className="bg-surface rounded-card border border-cream-dark p-3">
+            <p className="flex items-center gap-1 text-[11px] text-espresso/50">
+              <CalendarCheck size={12} /> Pelanggan Hari Ini
+            </p>
+            <p className="text-lg font-semibold text-espresso mt-0.5">{report.pelangganHariIni}</p>
+          </div>
+          <div className="bg-surface rounded-card border border-cream-dark p-3">
+            <p className="flex items-center gap-1 text-[11px] text-espresso/50">
+              <UserPlus size={12} /> Baru Bulan Ini
+            </p>
+            <p className="text-lg font-semibold text-espresso mt-0.5">{report.pelangganBaruBulanIni}</p>
+          </div>
+          <div className="bg-surface rounded-card border border-cream-dark p-3">
+            <p className="flex items-center gap-1 text-[11px] text-espresso/50">
+              <Wallet size={12} /> Rata-rata Belanja
+            </p>
+            <p className="text-sm font-semibold text-espresso mt-1 leading-tight">
+              {formatRupiah(report.rataRataBelanja)}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="relative mb-4">
         <Search
