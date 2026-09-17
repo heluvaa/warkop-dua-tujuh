@@ -17,6 +17,7 @@ import PaymentModal from '@/components/pos/PaymentModal';
 import ReceiptModal, { type ReceiptLineItem } from '@/components/pos/ReceiptModal';
 import KasbonNameModal from '@/components/belum-bayar/KasbonNameModal';
 import AddItemsModal from '@/components/belum-bayar/AddItemsModal';
+import EditItemsModal from '@/components/belum-bayar/EditItemsModal';
 import EditNameModal from '@/components/belum-bayar/EditNameModal';
 
 interface ReceiptData {
@@ -37,6 +38,7 @@ export default function BelumBayarPage() {
   const [kasbonForId, setKasbonForId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [addingForId, setAddingForId] = useState<string | null>(null);
+  const [editingItemsForId, setEditingItemsForId] = useState<string | null>(null);
   const [editingNameForId, setEditingNameForId] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
 
@@ -129,6 +131,7 @@ export default function BelumBayarPage() {
   const kasbonOrder = orders.find((o) => o.id === kasbonForId);
   const deletingOrder = orders.find((o) => o.id === confirmDeleteId);
   const addingOrder = orders.find((o) => o.id === addingForId);
+  const editingItemsOrder = orders.find((o) => o.id === editingItemsForId);
   const editingNameOrder = orders.find((o) => o.id === editingNameForId);
 
   return (
@@ -153,6 +156,7 @@ export default function BelumBayarPage() {
               onDelete={() => setConfirmDeleteId(order.id)}
               onAddMore={() => setAddingForId(order.id)}
               onEditName={() => setEditingNameForId(order.id)}
+              onEditItems={() => setEditingItemsForId(order.id)}
             />
           ))}
         </div>
@@ -176,6 +180,17 @@ export default function BelumBayarPage() {
           onClose={() => setAddingForId(null)}
           onDone={async () => {
             setAddingForId(null);
+            await refresh();
+          }}
+        />
+      )}
+
+      {editingItemsOrder && (
+        <EditItemsModal
+          order={editingItemsOrder}
+          onClose={() => setEditingItemsForId(null)}
+          onDone={async () => {
+            setEditingItemsForId(null);
             await refresh();
           }}
         />

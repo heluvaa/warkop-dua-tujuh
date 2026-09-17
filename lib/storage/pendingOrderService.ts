@@ -86,6 +86,27 @@ export async function addItemsToPendingOrder(
   return updated;
 }
 
+// Mengganti daftar item pesanan Belum Bayar dengan versi yang sudah
+// dikoreksi kasir lewat EditItemsModal (qty diubah dan/atau ada baris yang
+// dihapus karena salah pesan). Total dihitung ulang dari daftar item baru.
+// Stok TIDAK disesuaikan di sini — itu tanggung jawab pemanggil (lihat
+// EditItemsModal), sama seperti pola addItemsToPendingOrder di atas.
+export async function updatePendingOrderItems(
+  id: string,
+  items: TransactionLineItem[]
+): Promise<PendingOrder | undefined> {
+  const all = await getAllPendingOrders();
+  const idx = all.findIndex((p) => p.id === id);
+  if (idx === -1) return undefined;
+
+  const total = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const updated: PendingOrder = { ...all[idx], items, total };
+  const nextAll = [...all];
+  nextAll[idx] = updated;
+  await setItem(STORAGE_KEYS.PENDING_ORDERS, nextAll);
+  return updated;
+}
+
 // Mengubah nama pelanggan pada pesanan Belum Bayar yang sudah ada — dipakai
 // saat kasir mau mengoreksi nama yang salah ketik, atau mengganti nama
 // otomatis "Pelanggan N" begitu tahu nama aslinya.
