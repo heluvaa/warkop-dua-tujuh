@@ -3,13 +3,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Check, NotebookPen, Share2, Send, Loader2, CheckCircle2, XCircle } from 'lucide-react';
-import type { CartItem, CheckoutMethod, PaymentMethod, SplitPaymentDetail } from '@/lib/types';
+import type { CheckoutMethod, PaymentMethod, SplitPaymentDetail } from '@/lib/types';
 import { formatRupiah, paymentMethodLabel } from '@/lib/utils/format';
-import { formatSelectedVariantLabel } from '@/lib/utils/variant';
 import { GOOGLE_REVIEW_URL } from '@/lib/constants';
-import { renderReceiptToCanvas, canvasToBlob } from '@/lib/utils/receiptCanvas';
+import { renderReceiptToCanvas, canvasToBlob, type ReceiptCanvasItem } from '@/lib/utils/receiptCanvas';
 import { sendTelegramPhoto } from '@/lib/telegram';
 import { getSettings } from '@/lib/storage/settingsService';
+
+// Satu baris item struk — sengaja lebih ringkas dari CartItem (cuma butuh
+// nama/qty/harga/varian/catatan yang sudah jadi teks, bukan referensi penuh
+// ke MenuItem) supaya ReceiptModal bisa dipakai baik dari keranjang Kasir
+// (yang punya objek MenuItem lengkap) maupun dari pesanan Belum Bayar yang
+// baru dilunasi (yang cuma punya snapshot TransactionLineItem, tanpa
+// MenuItem-nya lagi).
+export interface ReceiptLineItem extends ReceiptCanvasItem {
+  id: string;
+}
 
 export default function ReceiptModal({
   items,
@@ -23,7 +32,7 @@ export default function ReceiptModal({
   createdAt,
   onClose,
 }: {
-  items: CartItem[];
+  items: ReceiptLineItem[];
   total: number;
   method: CheckoutMethod;
   cashReceived?: number;
@@ -54,9 +63,8 @@ export default function ReceiptModal({
   // (lihat juga guard { telegram: false } di transactionService.ts).
   function buildTelegramCaption(): string {
     const itemLines = items
-      .map(({ menuItem, quantity, note, variant }) => {
-        const variantLabel = formatSelectedVariantLabel(variant);
-        return `- ${menuItem.name}${variantLabel ? ` (${variantLabel})` : ''} x${quantity}${
+      .map(({ name, quantity, note, variantLabel }) => {
+        return `- ${name}${variantLabel ? ` (${variantLabel})` : ''} x${quantity}${
           note ? ` (${note})` : ''
         }`;
       })
@@ -107,13 +115,7 @@ export default function ReceiptModal({
   useEffect(() => {
     if (!receiptCanvasRef.current) return;
     renderReceiptToCanvas(receiptCanvasRef.current, {
-      items: items.map(({ menuItem, quantity, note, variant, unitPrice }) => ({
-        name: menuItem.name,
-        quantity,
-        unitPrice,
-        variantLabel: formatSelectedVariantLabel(variant) || undefined,
-        note,
-      })),
+      items,
       total,
       method,
       cashReceived,
@@ -150,9 +152,8 @@ export default function ReceiptModal({
   // Teks struk versi ringkas untuk dibagikan lewat WhatsApp — formatnya
   // mirip pesan rekap Telegram yang sudah ada, pakai *bold* ala WhatsApp.
   function buildReceiptText(): string {
-    const lines = items.map(({ menuItem, quantity, note, variant, unitPrice }) => {
-      const variantLabel = formatSelectedVariantLabel(variant);
-      return `${menuItem.name}${variantLabel ? ` (${variantLabel})` : ''} x${quantity}${
+    const lines = items.map(({ name, quantity, note, variantLabel, unitPrice }) => {
+      return `${name}${variantLabel ? ` (${variantLabel})` : ''} x${quantity}${
         note ? ` (${note})` : ''
       } - ${formatRupiah(unitPrice * quantity)}`;
     });
@@ -218,13 +219,13 @@ export default function ReceiptModal({
         )}
 
         <div className="bg-surface rounded-card p-4 text-left space-y-1.5">
-          {items.map(({ id, menuItem, quantity, note, variant, unitPrice }) => (
+          {items.map(({ id, name, quantity, note, variantLabel, unitPrice }) => (
             <div key={id} className="flex justify-between text-sm text-espresso/80 gap-2">
               <span className="min-w-0">
-                {menuItem.name} x{quantity}
-                {formatSelectedVariantLabel(variant) && (
+                {name} x{quantity}
+                {variantLabel && (
                   <span className="block text-xs text-espresso/50 truncate">
-                    {formatSelectedVariantLabel(variant)}
+                    {variantLabel}
                   </span>
                 )}
                 {note && <span className="block text-xs text-espresso/50 italic truncate">&ldquo;{note}&rdquo;</span>}

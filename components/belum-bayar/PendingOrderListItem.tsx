@@ -2,24 +2,35 @@
 
 import type { PendingOrder } from '@/lib/types';
 import { formatRupiah, formatDateTime, formatItemLabel } from '@/lib/utils/format';
-import { Clock3, Trash2, HandCoins } from 'lucide-react';
+import { Clock3, Trash2, HandCoins, Plus, Pencil } from 'lucide-react';
 
 export default function PendingOrderListItem({
   order,
   onMarkPaid,
   onMoveToKasbon,
   onDelete,
+  onAddMore,
+  onEditName,
 }: {
   order: PendingOrder;
   onMarkPaid: () => void;
   onMoveToKasbon: () => void;
   onDelete: () => void;
+  onAddMore: () => void;
+  onEditName: () => void;
 }) {
   return (
     <div className="bg-surface rounded-card p-4 border border-cream-dark">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="font-medium text-espresso truncate">{order.customerName || 'Tanpa nama'}</p>
+          <button
+            onClick={onEditName}
+            className="flex items-center gap-1 min-w-0 group"
+            aria-label="Ubah nama pelanggan"
+          >
+            <p className="font-medium text-espresso truncate">{order.customerName || 'Tanpa nama'}</p>
+            <Pencil size={11} className="text-espresso/30 shrink-0 group-hover:text-espresso/60" />
+          </button>
           <p className="text-xs text-espresso/50 flex items-center gap-1">
             <Clock3 size={11} className="shrink-0" />
             <span className="truncate">
@@ -51,6 +62,13 @@ export default function PendingOrderListItem({
             aria-label="Batalkan pesanan"
           >
             <Trash2 size={14} />
+          </button>
+          <button
+            onClick={onAddMore}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-cream-dark text-espresso shrink-0"
+            aria-label="Tambah pesanan"
+          >
+            <Plus size={14} />
           </button>
           <button
             onClick={onMoveToKasbon}

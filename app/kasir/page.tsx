@@ -5,10 +5,11 @@ import { ChevronUp, X } from 'lucide-react';
 import type { CartItem, MenuItem, CheckoutMethod, SplitPaymentDetail, SelectedVariant } from '@/lib/types';
 import { formatRupiah } from '@/lib/utils/format';
 import { getAllMenu, decrementStock, seedMenuIfEmpty, toggleFavorite } from '@/lib/storage/menuService';
-import { createTransaction, updateTransaction } from '@/lib/storage/transactionService';
+import { createTransaction, updateTransaction, getTodayTransactions } from '@/lib/storage/transactionService';
 import { createPendingOrder } from '@/lib/storage/pendingOrderService';
 import { createKasbon } from '@/lib/storage/kasbonService';
 import { getActiveOperator } from '@/lib/storage/operatorService';
+import { nextAutoCustomerName } from '@/lib/utils/customerName';
 import {
   buildCartLineId,
   computeVariantExtra,
@@ -18,11 +19,11 @@ import {
 import MenuGrid from '@/components/pos/MenuGrid';
 import Cart from '@/components/pos/Cart';
 import PaymentModal from '@/components/pos/PaymentModal';
-import ReceiptModal from '@/components/pos/ReceiptModal';
+import ReceiptModal, { type ReceiptLineItem } from '@/components/pos/ReceiptModal';
 import VariantPickerModal from '@/components/pos/VariantPickerModal';
 
 interface ReceiptData {
-  items: CartItem[];
+  items: ReceiptLineItem[];
   total: number;
   method: CheckoutMethod;
   cashReceived?: number;
@@ -145,7 +146,16 @@ export default function KasirPage() {
     method: CheckoutMethod,
     payload?: { cashReceived?: number; splitDetail?: SplitPaymentDetail; kasbonCustomerName?: string }
   ) {
-    const trimmedCustomerName = customerName.trim() || undefined;
+    let trimmedCustomerName = customerName.trim() || undefined;
+    // Transaksi langsung (cash/QRIS/split) tanpa nama diberi nama otomatis
+    // "Pelanggan N" supaya tetap gampang dibedakan di Laporan — cakupan
+    // nomornya transaksi hari ini saja (lihat nextAutoCustomerName). Pesanan
+    // "Belum Bayar" TIDAK diberi nama di sini karena sudah punya penomoran
+    // sendiri di dalam createPendingOrder (cakupan daftar Belum Bayar).
+    if (!trimmedCustomerName && method !== 'belum_bayar') {
+      const todayTx = await getTodayTransactions();
+      trimmedCustomerName = nextAutoCustomerName(todayTx.map((t) => t.customerName));
+    }
     const cashReceived = payload?.cashReceived;
     const lineItems = cart.map((c) => ({
       menuItemId: c.menuItem.id,
@@ -223,7 +233,14 @@ export default function KasirPage() {
     }
 
     setReceipt({
-      items: cart,
+      items: cart.map((c) => ({
+        id: c.id,
+        name: c.menuItem.name,
+        quantity: c.quantity,
+        unitPrice: c.unitPrice,
+        variantLabel: formatSelectedVariantLabel(c.variant) || undefined,
+        note: c.note,
+      })),
       total,
       method,
       cashReceived,

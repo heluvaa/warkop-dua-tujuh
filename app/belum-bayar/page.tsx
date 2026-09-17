@@ -8,18 +8,37 @@ import {
   movePendingOrderToKasbon,
   deletePendingOrder,
   settlePendingOrderSplit,
+  updatePendingOrderCustomerName,
 } from '@/lib/storage/pendingOrderService';
 import { incrementStock } from '@/lib/storage/menuService';
 import { formatRupiah } from '@/lib/utils/format';
 import PendingOrderListItem from '@/components/belum-bayar/PendingOrderListItem';
 import PaymentModal from '@/components/pos/PaymentModal';
+import ReceiptModal, { type ReceiptLineItem } from '@/components/pos/ReceiptModal';
 import KasbonNameModal from '@/components/belum-bayar/KasbonNameModal';
+import AddItemsModal from '@/components/belum-bayar/AddItemsModal';
+import EditNameModal from '@/components/belum-bayar/EditNameModal';
+
+interface ReceiptData {
+  items: ReceiptLineItem[];
+  total: number;
+  method: CheckoutMethod;
+  cashReceived?: number;
+  splitDetail?: SplitPaymentDetail;
+  change?: number;
+  customerName?: string;
+  operatorName?: string;
+  createdAt?: string;
+}
 
 export default function BelumBayarPage() {
   const [orders, setOrders] = useState<PendingOrder[]>([]);
   const [payingId, setPayingId] = useState<string | null>(null);
   const [kasbonForId, setKasbonForId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [addingForId, setAddingForId] = useState<string | null>(null);
+  const [editingNameForId, setEditingNameForId] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<ReceiptData | null>(null);
 
   async function refresh() {
     const all = await getAllPendingOrders();
@@ -39,12 +58,41 @@ export default function BelumBayarPage() {
     payload?: { cashReceived?: number; splitDetail?: SplitPaymentDetail; kasbonCustomerName?: string }
   ) {
     if (!payingId) return;
+    const order = orders.find((o) => o.id === payingId);
     if (method === 'split') {
       await settlePendingOrderSplit(payingId, payload!.splitDetail!, payload?.kasbonCustomerName);
     } else {
       await markPendingOrderPaid(payingId, method as 'cash' | 'qris', payload?.cashReceived);
     }
     setPayingId(null);
+
+    // Tampilkan struk (sama seperti checkout di Kasir) begitu pesanan Belum
+    // Bayar ini ditandai lunas — ReceiptModal otomatis kirim foto struknya
+    // ke Telegram kalau notifikasi transaksi aktif. Diambil dari data
+    // `order` yang masih ada di state SEBELUM refresh, karena setelah lunas
+    // pesanan ini sudah hilang dari daftar Belum Bayar.
+    if (order) {
+      const cashReceived = payload?.cashReceived;
+      setReceipt({
+        items: order.items.map((i, idx) => ({
+          id: `${i.menuItemId || 'item'}-${idx}`,
+          name: i.name,
+          quantity: i.quantity,
+          unitPrice: i.price,
+          variantLabel: i.variantLabel,
+          note: i.note,
+        })),
+        total: order.total,
+        method,
+        cashReceived,
+        splitDetail: payload?.splitDetail,
+        change: cashReceived !== undefined ? cashReceived - order.total : undefined,
+        customerName: order.customerName,
+        operatorName: order.operatorName,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
     await refresh();
   }
 
@@ -52,6 +100,13 @@ export default function BelumBayarPage() {
     if (!kasbonForId) return;
     await movePendingOrderToKasbon(kasbonForId, name);
     setKasbonForId(null);
+    await refresh();
+  }
+
+  async function handleConfirmEditName(name: string) {
+    if (!editingNameForId) return;
+    await updatePendingOrderCustomerName(editingNameForId, name);
+    setEditingNameForId(null);
     await refresh();
   }
 
@@ -73,6 +128,8 @@ export default function BelumBayarPage() {
   const payingOrder = orders.find((o) => o.id === payingId);
   const kasbonOrder = orders.find((o) => o.id === kasbonForId);
   const deletingOrder = orders.find((o) => o.id === confirmDeleteId);
+  const addingOrder = orders.find((o) => o.id === addingForId);
+  const editingNameOrder = orders.find((o) => o.id === editingNameForId);
 
   return (
     <div className="p-4 pb-24 md:pb-6">
@@ -94,6 +151,8 @@ export default function BelumBayarPage() {
               onMarkPaid={() => setPayingId(order.id)}
               onMoveToKasbon={() => setKasbonForId(order.id)}
               onDelete={() => setConfirmDeleteId(order.id)}
+              onAddMore={() => setAddingForId(order.id)}
+              onEditName={() => setEditingNameForId(order.id)}
             />
           ))}
         </div>
@@ -106,6 +165,27 @@ export default function BelumBayarPage() {
           defaultCustomerName={payingOrder.customerName ?? ''}
           onClose={() => setPayingId(null)}
           onConfirm={handleConfirmPaid}
+        />
+      )}
+
+      {receipt && <ReceiptModal {...receipt} onClose={() => setReceipt(null)} />}
+
+      {addingOrder && (
+        <AddItemsModal
+          order={addingOrder}
+          onClose={() => setAddingForId(null)}
+          onDone={async () => {
+            setAddingForId(null);
+            await refresh();
+          }}
+        />
+      )}
+
+      {editingNameOrder && (
+        <EditNameModal
+          defaultName={editingNameOrder.customerName ?? ''}
+          onClose={() => setEditingNameForId(null)}
+          onConfirm={handleConfirmEditName}
         />
       )}
 

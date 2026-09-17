@@ -1357,7 +1357,7 @@ export default function LaporanPage() {
                       )}
                       {t.source === 'pending_paid' && (
                         <span className="text-[10px] text-crema/90 bg-espresso/5 px-1.5 py-0.5 rounded">
-                          dari belum bayar
+                          sudah dibayar
                         </span>
                       )}
                       {t.voided && (
@@ -1424,7 +1424,7 @@ export default function LaporanPage() {
                         )}
                         {t.source === 'pending_paid' && (
                           <span className="ml-1.5 text-[10px] text-crema/90 bg-espresso/5 px-1.5 py-0.5 rounded whitespace-nowrap">
-                            dari belum bayar
+                            sudah dibayar
                           </span>
                         )}
                         {t.voided && (

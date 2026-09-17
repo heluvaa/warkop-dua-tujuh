@@ -1,10 +1,18 @@
 import { getItem, setItem, generateId, STORAGE_KEYS } from './db';
-import type { PendingOrder, PaymentMethod, SplitPaymentDetail, Transaction, KasbonEntry } from '../types';
+import type {
+  PendingOrder,
+  PaymentMethod,
+  SplitPaymentDetail,
+  Transaction,
+  KasbonEntry,
+  TransactionLineItem,
+} from '../types';
 import { createTransaction, updateTransaction } from './transactionService';
 import { createKasbon } from './kasbonService';
 import { getSettings } from './settingsService';
 import { sendNotification } from '../notify';
 import { formatRupiah } from '../utils/format';
+import { nextAutoCustomerName } from '../utils/customerName';
 
 export async function getAllPendingOrders(): Promise<PendingOrder[]> {
   return getItem<PendingOrder[]>(STORAGE_KEYS.PENDING_ORDERS, []);
@@ -22,6 +30,7 @@ export async function createPendingOrder(
   const all = await getAllPendingOrders();
   const newEntry: PendingOrder = {
     ...data,
+    customerName: data.customerName?.trim() || nextAutoCustomerName(all.map((p) => p.customerName)),
     id: generateId('pending'),
     createdAt: new Date().toISOString(),
   };
@@ -37,6 +46,62 @@ export async function createPendingOrder(
   }
 
   return newEntry;
+}
+
+// Menambahkan item baru ke pesanan Belum Bayar yang SUDAH ADA — dipakai saat
+// pelanggan yang pesanannya belum dibayar nambah pesanan lagi. Baris dengan
+// menu + varian + catatan yang PERSIS SAMA digabung quantity-nya, kombinasi
+// lain jadi baris baru. Total pesanan otomatis bertambah. Stok TIDAK dipotong
+// di sini — itu tanggung jawab pemanggil (lihat AddItemsModal), sama seperti
+// pola createPendingOrder di Kasir.
+export async function addItemsToPendingOrder(
+  id: string,
+  newItems: TransactionLineItem[]
+): Promise<PendingOrder | undefined> {
+  const all = await getAllPendingOrders();
+  const idx = all.findIndex((p) => p.id === id);
+  if (idx === -1) return undefined;
+
+  const entry = all[idx];
+  const mergedItems: TransactionLineItem[] = entry.items.map((i) => ({ ...i }));
+  for (const item of newItems) {
+    const existing = mergedItems.find(
+      (i) =>
+        i.menuItemId === item.menuItemId &&
+        i.variantLabel === item.variantLabel &&
+        i.note === item.note
+    );
+    if (existing) {
+      existing.quantity += item.quantity;
+    } else {
+      mergedItems.push({ ...item });
+    }
+  }
+
+  const addedTotal = newItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const updated: PendingOrder = { ...entry, items: mergedItems, total: entry.total + addedTotal };
+  const nextAll = [...all];
+  nextAll[idx] = updated;
+  await setItem(STORAGE_KEYS.PENDING_ORDERS, nextAll);
+  return updated;
+}
+
+// Mengubah nama pelanggan pada pesanan Belum Bayar yang sudah ada — dipakai
+// saat kasir mau mengoreksi nama yang salah ketik, atau mengganti nama
+// otomatis "Pelanggan N" begitu tahu nama aslinya.
+export async function updatePendingOrderCustomerName(
+  id: string,
+  customerName: string
+): Promise<PendingOrder | undefined> {
+  const all = await getAllPendingOrders();
+  const idx = all.findIndex((p) => p.id === id);
+  if (idx === -1) return undefined;
+
+  const updated: PendingOrder = { ...all[idx], customerName: customerName.trim() };
+  const nextAll = [...all];
+  nextAll[idx] = updated;
+  await setItem(STORAGE_KEYS.PENDING_ORDERS, nextAll);
+  return updated;
 }
 
 async function takePendingOrder(id: string): Promise<PendingOrder | undefined> {
